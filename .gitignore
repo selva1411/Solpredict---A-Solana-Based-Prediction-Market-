@@ -1,0 +1,16 @@
+.anchor
+.DS_Store
+target
+**/*.rs.bk
+node_modules
+test-ledger
+.test-ledger/
+.test-ledger
+.yarn
+repomix-output.xml
+scratch_lint.txt
+test_output.log
+price_feeds.json
+yarn.lock
+opencode.json
+logs/
