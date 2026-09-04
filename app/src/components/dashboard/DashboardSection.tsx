@@ -1,0 +1,111 @@
+"use client";
+
+import React from "react";
+import { motion } from "framer-motion";
+import type { LucideIcon } from "lucide-react";
+
+interface DashboardSectionProps {
+  title: string;
+  subtitle?: string;
+  icon: LucideIcon;
+  count?: number;
+  variant?: "default" | "alert";
+  children: React.ReactNode;
+  delay?: number;
+}
+
+export function DashboardSection({
+  title,
+  subtitle,
+  icon: Icon,
+  count,
+  variant = "default",
+  children,
+  delay = 0,
+}: DashboardSectionProps) {
+  const isAlert = variant === "alert";
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ duration: 0.45, delay }}
+      className={`space-y-4 ${
+        isAlert
+          ? "bg-cream border border-hairline rounded-[8px] shadow-sm p-6"
+          : ""
+      }`}
+    >
+      <div className="flex items-center space-x-2">
+        <motion.div
+          animate={isAlert ? { rotate: [0, -4, 4, 0] } : {}}
+          transition={{
+            repeat: isAlert ? Infinity : 0,
+            duration: 2.5,
+            repeatDelay: 3,
+          }}
+          className="text-inkblue"
+        >
+          <Icon className="w-5 h-5" />
+        </motion.div>
+        <span className="w-1.5 h-5 bg-inkblue rounded-[1px]" />
+        <h2 className="text-[21px] font-display font-extrabold tracking-wide uppercase text-ink">
+          {title}
+          {count !== undefined && count > 0 ? ` (${count})` : ""}
+        </h2>
+      </div>
+      {subtitle && (
+        <p className="text-ash text-xs -mt-2 font-bold">{subtitle}</p>
+      )}
+      {children}
+    </motion.section>
+  );
+}
+
+interface SectionHeaderProps {
+  title: string;
+  subtitle: string;
+  badge?: string;
+  badgeLabel?: string;
+}
+
+export function DashboardHero({
+  title,
+  subtitle,
+  badge,
+  badgeLabel,
+}: SectionHeaderProps) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="border-b border-hairline pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4 relative"
+    >
+      <div className="absolute -top-4 -left-4 w-24 h-24 bg-cyan/5 rounded-[8px] blur-3xl pointer-events-none" />
+      <div className="space-y-1 relative">
+        <h1 className="text-3xl font-display font-black text-ink uppercase tracking-wide">
+          {title}
+        </h1>
+        <p className="text-ash text-[13px]">{subtitle}</p>
+      </div>
+      {badge && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.15 }}
+          className="flex items-center space-x-2 bg-cream border border-hairline rounded-[8px] px-3 py-1.5 shadow-sm"
+        >
+          {badgeLabel && (
+            <span className="text-xs font-mono text-ash font-bold">
+              {badgeLabel}
+            </span>
+          )}
+          <span className="text-xs font-mono font-bold text-inkblue">
+            {badge}
+          </span>
+        </motion.div>
+      )}
+    </motion.div>
+  );
+}

@@ -1,0 +1,45 @@
+export default function MarketDetailLoading() {
+  return (
+    <div className="mx-auto w-full max-w-[1240px] px-6 py-10 animate-pulse">
+      <div className="w-24 h-4 bg-sheet rounded skeleton-shimmer mb-6" />
+      <div className="grid lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          <div className="panel-lux p-6 space-y-4">
+            <div className="w-20 h-5 bg-sheet rounded-[2px] skeleton-shimmer" />
+            <div className="w-3/4 h-8 bg-sheet rounded skeleton-shimmer" />
+            <div className="w-1/2 h-4 bg-sheet rounded skeleton-shimmer" />
+            <div className="flex gap-4">
+              <div className="w-32 h-16 bg-sheet rounded skeleton-shimmer" />
+              <div className="w-32 h-16 bg-sheet rounded skeleton-shimmer" />
+              <div className="w-32 h-16 bg-sheet rounded skeleton-shimmer" />
+            </div>
+          </div>
+          <div className="panel-lux p-6">
+            <div className="w-full h-64 bg-sheet rounded skeleton-shimmer" />
+          </div>
+          <div className="panel-lux p-6">
+            <div className="w-32 h-5 bg-sheet rounded skeleton-shimmer mb-4" />
+            <div className="space-y-3">
+              {[...Array(5)].map((_, i) => (
+                <div
+                  key={i}
+                  className="w-full h-10 bg-sheet rounded skeleton-shimmer"
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="space-y-6">
+          <div className="panel-lux p-6">
+            <div className="w-24 h-5 bg-sheet rounded skeleton-shimmer mb-4" />
+            <div className="w-full h-48 bg-sheet rounded skeleton-shimmer" />
+          </div>
+          <div className="panel-lux p-6">
+            <div className="w-20 h-5 bg-sheet rounded skeleton-shimmer mb-4" />
+            <div className="w-full h-32 bg-sheet rounded skeleton-shimmer" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

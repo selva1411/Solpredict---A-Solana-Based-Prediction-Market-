@@ -1,0 +1,180 @@
+"use client";
+
+import React from "react";
+import { PYTH_FEED_REGISTRY } from "@/lib/pyth-feeds";
+import { usePythPrices } from "@/hooks/usePythPrices";
+
+export interface LivePriceBarProps {
+  feedIdHex: string;
+  category: number;
+  targetPrice: number;
+  targetExpo: number;
+  comparison: number;
+  compact?: boolean;
+}
+
+function formatPrice(price: number): string {
+  if (price < 0.01) return `$${price.toFixed(6)}`;
+  if (price < 1) return `$${price.toFixed(4)}`;
+  if (price < 10000) return `$${price.toFixed(2)}`;
+  return `$${(price / 1000).toFixed(1)}K`;
+}
+
+function formatTarget(price: number, expo: number): string {
+  const raw = price;
+  const divider = Math.pow(10, Math.abs(expo));
+  const normalized = raw / divider;
+  return `$${normalized.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+  })}`;
+}
+
+export function LivePriceBar({
+  feedIdHex,
+  category,
+  targetPrice,
+  targetExpo,
+  comparison,
+  compact = false,
+}: LivePriceBarProps) {
+  const isOracleCat = category === 0 || category === 3 || category === 4;
+
+  // ── Own the Pyth price fetch internally so it doesn't cause parent re-renders ──
+  const feedIds = isOracleCat && feedIdHex ? [feedIdHex] : [];
+  const livePrices = usePythPrices(feedIds);
+  const cleanId = feedIdHex?.replace("0x", "") ?? "";
+  const priceData = cleanId ? livePrices[cleanId] : null;
+
+  if (!isOracleCat) {
+    return (
+      <span className="px-2 py-0.5 text-[9px] font-bold font-mono rounded-[4px] bg-sheet border border-inkblue/30 text-inkblue inline-flex items-center gap-1">
+        Manually resolved
+      </span>
+    );
+  }
+
+  const lookupKey = Object.entries(PYTH_FEED_REGISTRY).find(
+    ([, entry]) =>
+      feedIdHex
+        .toLowerCase()
+        .includes(entry.feedIdHex.slice(2).toLowerCase()) ||
+      entry.feedIdHex.toLowerCase().includes(feedIdHex.toLowerCase())
+  );
+  const entry = lookupKey ? lookupKey[1] : null;
+
+  const livePrice = priceData?.price ?? null;
+  const liveError = priceData?.error ?? null;
+  const liveLoading = !priceData;
+
+  if (liveLoading) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-ash animate-pulse">
+        <span className="w-3 h-3 rounded-[2px] border border-ink/40 border-t-transparent animate-spin" />
+        Loading price...
+      </span>
+    );
+  }
+
+  if (liveError || livePrice === null) {
+    return (
+      <span className="text-[10px] font-mono text-magenta">
+        {entry ? `${entry.symbol}: —` : "Feed unavailable"}
+      </span>
+    );
+  }
+
+  const targetNormalized = targetPrice / Math.pow(10, Math.abs(targetExpo));
+  const delta = livePrice - targetNormalized;
+  const deltaPct =
+    targetNormalized !== 0 ? (delta / targetNormalized) * 100 : 0;
+
+  const yesWinning = comparison === 0 ? delta > 0 : delta < 0;
+
+  if (compact) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-[10px] font-mono">
+        <span className="text-inkblue font-bold">
+          {entry?.symbol ?? feedIdHex.slice(0, 8)}
+        </span>
+        <span className="text-ink">{formatPrice(livePrice)}</span>
+        <span className={yesWinning ? "text-grass" : "text-magenta"}>
+          {deltaPct >= 0 ? "▲" : "▼"} {Math.abs(deltaPct).toFixed(1)}%
+        </span>
+      </span>
+    );
+  }
+
+  const barPct = Math.min(
+    Math.max(
+      ((livePrice - targetNormalized * 0.8) / (targetNormalized * 0.4)) * 50 +
+        50,
+      0
+    ),
+    100
+  );
+
+  return (
+    <div className="space-y-1.5 font-mono">
+      <div className="flex items-center justify-between text-[11px]">
+        <div className="flex items-center gap-2">
+          <span className="text-ash text-[10px] uppercase tracking-wider font-display font-bold">
+            Live Price
+          </span>
+          <span className="text-inkblue font-bold">
+            {entry?.symbol ?? "Feed"}
+          </span>
+          <span className="text-ink text-[13px] font-bold">
+            {formatPrice(livePrice)}
+          </span>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-ash">
+            Target: {formatTarget(targetPrice, targetExpo)}
+          </span>
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded-[4px] ${
+              yesWinning
+                ? "bg-grass/20 text-grass"
+                : "bg-magenta/20 text-magenta"
+            }`}
+          >
+            {comparison === 0 ? ">" : "<"} Target — {yesWinning ? "YES" : "NO"}{" "}
+            winning
+          </span>
+        </div>
+      </div>
+      <div className="w-full h-2 bg-sheet rounded-[4px] overflow-hidden border border-hairline relative">
+        <div
+          className="h-full rounded-[4px] transition-[width] duration-500 ease-out"
+          style={{
+            width: `${barPct}%`,
+            background: yesWinning
+              ? "linear-gradient(90deg, var(--color-grass), var(--color-grass))"
+              : "linear-gradient(90deg, var(--color-magenta), var(--color-magenta))",
+          }}
+        />
+        <div
+          className="absolute top-0 w-0.5 h-full bg-cyan z-10"
+          style={{ left: "50%" }}
+          title="Target price"
+        />
+      </div>
+      <div className="flex justify-between text-[9px] text-ash/70">
+        <span>
+          {comparison === 0
+            ? "Below target (NO winning)"
+            : "Below target (YES winning)"}
+        </span>
+        <span className="font-bold">
+          {deltaPct >= 0 ? "+" : ""}
+          {deltaPct.toFixed(1)}% from target
+        </span>
+        <span>
+          {comparison === 0
+            ? "Above target (YES winning)"
+            : "Above target (NO winning)"}
+        </span>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,193 @@
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { motion, Variants } from "framer-motion";
+import { Users, Search, Loader2, ExternalLink } from "lucide-react";
+import { adminFetch } from "@/lib/admin-client";
+
+const cardVariants: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+};
+
+interface UserRow {
+  wallet: string;
+  username: string | null;
+  avatarUrl: string | null;
+  bio: string | null;
+  twitterHandle: string | null;
+  totalWagered: number;
+  totalProfit: number;
+  totalWon: number;
+  marketsTraded: number;
+  winRate: number;
+  pasScore: number | null;
+  lastActive: string | null;
+  createdAt: string | null;
+}
+
+export function UsersSection() {
+  const [users, setUsers] = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await adminFetch("/api/admin/users");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setUsers(data.users ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load users");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  const filtered = search
+    ? users.filter(
+        (u) =>
+          u.wallet.toLowerCase().includes(search.toLowerCase()) ||
+          u.username?.toLowerCase().includes(search.toLowerCase())
+      )
+    : users;
+
+  if (loading) {
+    return (
+      <motion.section
+        variants={cardVariants}
+        initial="hidden"
+        animate="visible"
+        className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8"
+      >
+        <div className="flex items-center justify-center gap-3 text-ash">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-xs font-mono">Loading users...</span>
+        </div>
+      </motion.section>
+    );
+  }
+
+  if (error) {
+    return (
+      <motion.section
+        variants={cardVariants}
+        initial="hidden"
+        animate="visible"
+        className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8"
+      >
+        <p className="text-xs text-magenta font-mono">{error}</p>
+      </motion.section>
+    );
+  }
+
+  return (
+    <motion.section
+      variants={cardVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-4"
+    >
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-cyan" />
+          <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
+          <h2 className="text-[21px] font-display font-extrabold uppercase tracking-wider text-ink">
+            Traders ({filtered.length})
+          </h2>
+        </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ash" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by wallet or username..."
+            className="w-64 bg-cream border border-hairline rounded-[4px] pl-9 pr-3 py-2 text-xs text-ink focus:outline-none focus:border-cyan"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8 text-center">
+          <p className="text-[13px] text-ash">
+            {search
+              ? "No users match your search."
+              : "No traders yet. Users appear when they place their first trade."}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-cream border border-hairline rounded-[8px] shadow-sm overflow-hidden">
+          <div className="overflow-x-auto scrollbar-thin">
+            <table className="w-full text-left border-collapse min-w-[650px]">
+              <thead>
+                <tr className="border-b border-hairline text-[10px] font-mono uppercase tracking-widest text-ash bg-ground">
+                  <th className="py-3 px-4">Wallet</th>
+                  <th className="py-3 px-4">Username</th>
+                  <th className="py-3 px-4 text-right">Wagered</th>
+                  <th className="py-3 px-4 text-right">Profit</th>
+                  <th className="py-3 px-4 text-right">Win Rate</th>
+                  <th className="py-3 px-4 text-right">PAS</th>
+                  <th className="py-3 px-4 text-right">Traded</th>
+                  <th className="py-3 px-4 text-right hidden sm:table-cell">
+                    Last Active
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-hairline font-mono text-xs">
+                {filtered.map((u) => (
+                  <tr
+                    key={u.wallet}
+                    className="hover:bg-ground/50 transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <span className="text-cyan text-[10px]">
+                        {u.wallet.slice(0, 4)}...{u.wallet.slice(-4)}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-ink font-bold">
+                      {u.username ||
+                        `${u.wallet.slice(0, 4)}...${u.wallet.slice(-4)}`}
+                    </td>
+                    <td className="py-3 px-4 text-right text-ink">
+                      {u.totalWagered.toFixed(2)} SOL
+                    </td>
+                    <td
+                      className={`py-3 px-4 text-right font-bold ${
+                        u.totalProfit >= 0 ? "text-grass" : "text-magenta"
+                      }`}
+                    >
+                      {u.totalProfit >= 0 ? "+" : ""}
+                      {u.totalProfit.toFixed(2)} SOL
+                    </td>
+                    <td className="py-3 px-4 text-right text-ink">
+                      {u.winRate.toFixed(1)}%
+                    </td>
+                    <td className="py-3 px-4 text-right text-ink">
+                      {u.pasScore != null ? u.pasScore : "—"}
+                    </td>
+                    <td className="py-3 px-4 text-right text-ink">
+                      {u.marketsTraded}
+                    </td>
+                    <td className="py-3 px-4 text-right text-ash text-[10px] hidden sm:table-cell">
+                      {u.lastActive
+                        ? new Date(u.lastActive).toLocaleDateString()
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </motion.section>
+  );
+}
