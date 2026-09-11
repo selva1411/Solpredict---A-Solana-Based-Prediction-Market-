@@ -206,7 +206,7 @@ pub mod solpredict {
     ) -> Result<()> {
         use crate::errors::SolPredictError;
         use crate::events::MarketSettled;
-        use crate::state::{Market, MarketStatus, WinningOutcome};
+        use crate::state::{Category, Market, MarketStatus, WinningOutcome};
         use crate::utils::payout_math;
 
         let count = ctx.remaining_accounts.len();
@@ -245,6 +245,13 @@ pub mod solpredict {
             );
 
             require!(market.status == MarketStatus::Open, SolPredictError::MarketNotOpen);
+            // Crypto markets must always be settled via the Pyth-backed path
+            // (settle_market), never by admin fiat — same rule as
+            // settle_market_manual, which batch_settle must not bypass.
+            require!(
+                market.category != Category::Crypto,
+                SolPredictError::UsePythForCrypto
+            );
 
             let clock = Clock::get()?;
             // Oracle/manual settlement both wait for resolve_ts — the dispute

@@ -239,4 +239,7 @@ pub enum SolPredictError {
 
     #[msg("This position has unclaimed rewards — claim before closing it")]
     PositionHasUnclaimedRewards,
+
+    #[msg("new_admin must not be the zero address or the current admin")]
+    InvalidAdmin,
 }

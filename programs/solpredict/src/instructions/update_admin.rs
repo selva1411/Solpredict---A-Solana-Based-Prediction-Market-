@@ -33,6 +33,16 @@ pub struct UpdateAdmin<'info> {
 pub fn handler(ctx: Context<UpdateAdmin>, new_admin: Pubkey) -> Result<()> {
     let config = &mut ctx.accounts.config;
     let old_admin = config.admin;
+
+    // A zero/default-key or no-op transfer would permanently brick every
+    // admin-gated instruction (approve_market, update_market,
+    // emergency_pause, emergency_withdraw, initialize_market, ...) with no
+    // recovery path, since nothing controls the default Pubkey.
+    require!(
+        new_admin != Pubkey::default() && new_admin != old_admin,
+        SolPredictError::InvalidAdmin
+    );
+
     config.admin = new_admin;
 
     msg!(
