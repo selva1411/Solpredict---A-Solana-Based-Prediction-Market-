@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
 import { verifySignature, verifySessionToken, type Session } from "./auth";
-import { USER_MESSAGE_PREFIX } from "./user-message";
+import { USER_MESSAGE_PREFIX, isUserMessageExpired } from "./user-message";
 import { isDevAuthEnabled } from "./dev-auth";
 
 export interface UserIdentity {
@@ -67,6 +67,16 @@ export async function requireUser(
       return {
         ok: false,
         response: userResponse(401, "Invalid message format"),
+      };
+    }
+    // A signed proof carries its own bounded lifetime (see user-message.ts) —
+    // without this check, a leaked x-wallet/x-message/x-signature triple
+    // (XSS, devtools, a logged request) would be a permanent, unrevokable
+    // credential for that wallet, since the signature itself never expires.
+    if (isUserMessageExpired(message)) {
+      return {
+        ok: false,
+        response: userResponse(401, "Signed proof has expired"),
       };
     }
     let sigBytes: Uint8Array;

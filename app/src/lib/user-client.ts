@@ -1,6 +1,6 @@
 import type { MessageSignerWalletAdapterProps } from "@solana/wallet-adapter-base";
 import { PublicKey } from "@solana/web3.js";
-import { buildUserMessage } from "./user-message";
+import { buildUserMessage, isUserMessageExpired } from "./user-message";
 
 interface UserAuth {
   wallet: string;
@@ -61,11 +61,14 @@ export async function signUserProof(
 ): Promise<UserAuth | null> {
   if (!wallet?.publicKey) return null;
   const walletKey = wallet.publicKey.toBase58();
-  if (cached && cached.wallet === walletKey) return cached;
+  if (cached && cached.wallet === walletKey && !isUserMessageExpired(cached.message)) {
+    return cached;
+  }
 
-  // Reuse a previously-signed proof for this wallet instead of re-prompting.
+  // Reuse a previously-signed proof for this wallet instead of re-prompting,
+  // as long as it hasn't passed its bounded expiry (see user-message.ts).
   const stored = loadStoredProofs()[walletKey];
-  if (stored) {
+  if (stored && !isUserMessageExpired(stored.message)) {
     cached = stored;
     return stored;
   }
@@ -75,7 +78,7 @@ export async function signUserProof(
   if (!signing) {
     signing = (async () => {
       try {
-        const message = buildUserMessage(String(Date.now()));
+        const message = buildUserMessage();
         const signature = await signMessage(new TextEncoder().encode(message));
         const proof = {
           wallet: walletKey,

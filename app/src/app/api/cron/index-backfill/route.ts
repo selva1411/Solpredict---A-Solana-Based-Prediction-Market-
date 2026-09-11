@@ -4,7 +4,7 @@ import { Connection } from "@solana/web3.js";
 import { getDb } from "@/lib/db/client";
 import { getCursor, saveCursor, applyEvent } from "@/lib/indexer/reducer";
 import { ok, serverError } from "@/lib/api-response";
-import { apiHandler } from "@/lib/api-handler";
+import { apiHandler, requireServiceKey } from "@/lib/api-handler";
 import { ENV } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
@@ -14,6 +14,11 @@ const PROGRAM_ID =
   "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
 
 export const GET = apiHandler(async (req: NextRequest) => {
+  // Without this, any caller could race the real cron trigger and corrupt
+  // the shared indexer cursor / re-process signatures concurrently.
+  if (!requireServiceKey(req)) {
+    return ok({ error: "Unauthorized" }, { status: 401 } as ResponseInit);
+  }
   if (!getDb()) return serverError("Database not available");
 
   try {
