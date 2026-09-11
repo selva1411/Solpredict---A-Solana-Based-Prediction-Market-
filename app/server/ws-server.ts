@@ -184,6 +184,18 @@ function handleHttp(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/broadcast" && method === "POST") {
+    // Server-to-server only: without this, any caller who can reach this
+    // port could force a refresh pass on demand (hammering the Next.js API
+    // it fetches from) and could target refreshUserPositions() for an
+    // arbitrary wallet at will. Matches the requireServiceKey pattern the
+    // Next.js app uses for its own service-to-service routes (x-service-key
+    // header checked against SERVICE_API_KEY).
+    const expectedKey = process.env.SERVICE_API_KEY;
+    if (!expectedKey || req.headers["x-service-key"] !== expectedKey) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: "Unauthorized" }));
+      return;
+    }
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
@@ -222,12 +234,32 @@ wss.on("connection", (ws) => {
       switch (msg.type) {
         case "subscribe":
           if (msg.channels && Array.isArray(msg.channels)) {
+            const rejected: string[] = [];
             for (const ch of msg.channels) {
+              // A positions:<wallet> channel carries another user's private
+              // portfolio data. Without this check, any connected client
+              // (no auth required to open a WS connection at all) could
+              // subscribe to positions:<anyWallet> and read that wallet's
+              // live positions — an IDOR-style privacy leak. Require the
+              // client to have already proven ownership of that wallet via
+              // the "auth" message.
+              const pos = ch.match(/^positions:(.+)$/);
+              if (pos && pos[1] !== client.wallet) {
+                rejected.push(ch);
+                continue;
+              }
               client.subscriptions.add(ch);
             }
             sendTo(ws, "subscribed", { channels: Array.from(client.subscriptions) });
+            if (rejected.length > 0) {
+              sendTo(ws, "subscribe_error", {
+                error: "Not authorized for these channels",
+                channels: rejected,
+              });
+            }
             // Push any cached data for the newly-subscribed channels.
             for (const ch of msg.channels) {
+              if (rejected.includes(ch)) continue;
               const pos = ch.match(/^positions:(.+)$/);
               if (pos) refreshUserPositions(pos[1]);
             }
@@ -246,6 +278,20 @@ wss.on("connection", (ws) => {
         case "auth":
           if (msg.wallet && msg.signature && msg.message) {
             try {
+              // The signed message must embed a recent (13-digit epoch-ms)
+              // timestamp. Without this, a captured (message, signature)
+              // pair — leaked via XSS, devtools, or a logged request — would
+              // authenticate as that wallet forever, since ed25519
+              // signatures themselves never expire. Now that "subscribe"
+              // gates positions:<wallet> channels on client.wallet, this
+              // auth step is a real privilege boundary and needs the same
+              // bounded lifetime the REST API's wallet proof has.
+              const tsMatch = /(\d{13})/.exec(msg.message);
+              const AUTH_MESSAGE_TTL_MS = 5 * 60 * 1000;
+              if (!tsMatch || Math.abs(Date.now() - Number(tsMatch[1])) > AUTH_MESSAGE_TTL_MS) {
+                sendTo(ws, "auth_error", { error: "Auth message expired or missing timestamp" });
+                break;
+              }
               const wallet = new PublicKey(msg.wallet);
               const sigBytes = Uint8Array.from(Buffer.from(msg.signature, "base64"));
               const messageBytes = new TextEncoder().encode(msg.message);
