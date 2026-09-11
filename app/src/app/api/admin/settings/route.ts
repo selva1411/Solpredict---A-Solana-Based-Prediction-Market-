@@ -41,7 +41,10 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return badRequest("Invalid JSON body");
 
-  const wallet = req.headers.get("x-wallet") || guard.identity.wallet;
+  // Always attribute the change to the guard-verified identity, never a
+  // client-supplied header — otherwise any admin could frame another wallet
+  // in the settings audit trail by sending an arbitrary x-wallet value.
+  const wallet = guard.identity.wallet;
 
   try {
     for (const [key, value] of Object.entries(body)) {
@@ -62,7 +65,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
   if (!body?.key) return badRequest("key is required");
 
-  const wallet = req.headers.get("x-wallet") || guard.identity.wallet;
+  const wallet = guard.identity.wallet;
 
   try {
     await upsertAdminSetting(body.key, String(body.value ?? ""), wallet);

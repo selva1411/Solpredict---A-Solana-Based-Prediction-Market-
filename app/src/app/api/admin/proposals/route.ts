@@ -56,9 +56,15 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") return badRequest("Invalid JSON body");
 
-  const { id, action, approvedMarketPubkey, reviewer } = body;
+  const { id, action, approvedMarketPubkey } = body;
   if (!id || !action) return badRequest("id and action required");
   if (!db) return badRequest("Database not available");
+
+  // Always attribute approve/reject to the guard-verified identity, never a
+  // client-supplied `reviewer` field — otherwise any caller who passes the
+  // admin guard could attribute the decision to an arbitrary wallet string,
+  // defeating accountability for proposal approvals/rejections.
+  const reviewer = guard.identity.wallet;
 
   try {
     if (action === "approve") {
@@ -67,13 +73,13 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
         .set({
           status: "approved",
           approvedMarketPubkey: approvedMarketPubkey || null,
-          reviewer: reviewer || null,
+          reviewer,
           reviewedAt: new Date(),
         })
         .where(eq(marketProposals.id, Number(id)));
       await logAuditEntry(
         "PROPOSAL_APPROVE",
-        reviewer || "",
+        reviewer,
         String(id),
         { approvedMarketPubkey: approvedMarketPubkey || null },
         getClientIp(req)
@@ -85,13 +91,13 @@ export const PATCH = apiHandler(async (req: NextRequest) => {
         .update(marketProposals)
         .set({
           status: "rejected",
-          reviewer: reviewer || null,
+          reviewer,
           reviewedAt: new Date(),
         })
         .where(eq(marketProposals.id, Number(id)));
       await logAuditEntry(
         "PROPOSAL_REJECT",
-        reviewer || "",
+        reviewer,
         String(id),
         {},
         getClientIp(req)
