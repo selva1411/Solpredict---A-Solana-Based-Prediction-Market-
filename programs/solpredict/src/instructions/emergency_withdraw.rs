@@ -54,21 +54,16 @@ pub fn handler(ctx: Context<EmergencyWithdrawAccounts>) -> Result<()> {
     require!(treasury_balance > 0, SolPredictError::NoFeesToWithdraw);
 
     // Only PROTOCOL-OWNED funds may ever leave the treasury, never user
-    // principal:
-    //   - Settled: the unclaimed payout pool plus collected fees.
+    // principal or winnings:
+    //   - Settled: `fee_collected` only. `total_payout_pool - total_claimed`
+    //     is NOT protocol-owned — it is winners' unclaimed payouts, and
+    //     sweeping it here would let the admin steal funds out from under
+    //     users before they get a chance to call claim.
     //   - Paused but NOT settled: an Open market's treasury holds user
     //     deposits that are refundable via cancellation — sweeping it would be
     //     a rug-pull. Only `fee_collected` is protocol-owned at that point
     //     (and it is 0 until settlement, so the require below rejects).
-    let withdraw_amount = if is_settled {
-        let unclaimed = market
-            .total_payout_pool
-            .saturating_sub(market.total_claimed)
-            .saturating_add(market.fee_collected);
-        unclaimed.min(treasury_balance)
-    } else {
-        market.fee_collected.min(treasury_balance)
-    };
+    let withdraw_amount = market.fee_collected.min(treasury_balance);
     require!(withdraw_amount > 0, SolPredictError::NoFeesToWithdraw);
 
     let market_id = market.market_id;

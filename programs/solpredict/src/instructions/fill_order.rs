@@ -56,7 +56,13 @@ pub struct FillOrder<'info> {
     )]
     pub order_escrow: SystemAccount<'info>,
 
-    /// Optional emergency-pause account. When present and paused, trading is halted.
+    /// Optional emergency-pause account. When present and paused, trading is
+    /// halted. Pinned to the canonical PDA so a caller cannot bypass the
+    /// pause by omitting or substituting an unrelated account.
+    #[account(
+        seeds = [PAUSE_SEED],
+        bump = emergency_pause.bump,
+    )]
     pub emergency_pause: Option<Account<'info, EmergencyPause>>,
 
     pub token_program: Program<'info, Token>,
@@ -128,6 +134,21 @@ pub fn handler(ctx: Context<FillOrder>, quantity: u64) -> Result<()> {
         .checked_mul(BASE_UNITS_PER_SHARE as u128)
         .ok_or(SolPredictError::MathOverflow)?;
     let token_units_u64 = u64::try_from(token_units).map_err(|_| SolPredictError::MathOverflow)?;
+
+    // Checks-effects-interactions: persist the fill against the order BEFORE
+    // any external transfer CPI below, so a reentrant call (e.g. via a
+    // transfer-hook-enabled mint) would see the order already partially/fully
+    // filled rather than being able to fill the same remaining quantity twice.
+    {
+        let order = &mut ctx.accounts.order;
+        order.filled_quantity = order
+            .filled_quantity
+            .checked_add(fill_qty)
+            .ok_or(SolPredictError::MathOverflow)?;
+        if order.filled_quantity >= order.quantity {
+            order.status = OrderStatus::Filled;
+        }
+    }
 
     if is_buy {
         // Maker is Buying tokens:
@@ -212,16 +233,6 @@ pub fn handler(ctx: Context<FillOrder>, quantity: u64) -> Result<()> {
             ),
             token_units_u64,
         )?;
-    }
-
-    let order = &mut ctx.accounts.order;
-    order.filled_quantity = order
-        .filled_quantity
-        .checked_add(fill_qty)
-        .ok_or(SolPredictError::MathOverflow)?;
-
-    if order.filled_quantity >= order.quantity {
-        order.status = OrderStatus::Filled;
     }
 
     msg!(

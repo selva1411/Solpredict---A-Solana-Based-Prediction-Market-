@@ -50,21 +50,40 @@ pub fn validate_and_read_price(
     oracle_feed_id: &[u8; 32],
     max_staleness_secs: u64,
 ) -> Result<ValidatedPrice> {
-    // 1. Verify owner is either the Pyth Solana Receiver or our program (for mock/test updates).
+    // 1. Verify owner is the Pyth Solana Receiver. The `crate::ID` (our own
+    //    program) branch below is compiled in ONLY for `devnet-mock` builds,
+    //    matching `mock_create_price_update`'s own gate — a default/mainnet
+    //    build must never treat a program-owned account as a valid price feed,
+    //    since this program itself owns essentially every PDA it manages
+    //    (markets, orders, positions, ...), any one of which could otherwise
+    //    be shaped to pass as a forged price update.
     //    System Program is intentionally NOT allowed: System-owned accounts can only hold
     //    zeroed data (no valid PriceUpdateV2), so accepting them adds no capability while
     //    widening the attack surface for malformed-input handling.
     let pyth_receiver = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
+    #[cfg(feature = "devnet-mock")]
     let is_valid_owner = price_update_info.owner == &pyth_receiver
         || price_update_info.owner == &crate::ID;
+    #[cfg(not(feature = "devnet-mock"))]
+    let is_valid_owner = price_update_info.owner == &pyth_receiver;
     require!(is_valid_owner, SolPredictError::InvalidOracleFeed);
 
     let data = price_update_info.try_borrow_data()?;
 
-    // Account data must contain at least the 8-byte Anchor discriminator
+    // Account data must contain at least the 8-byte discriminator.
     if data.len() < 8 {
         return err!(SolPredictError::StaleOracle);
     }
+
+    // Verify the discriminator matches PriceUpdateV2's — without this check,
+    // deserialize() below would happily reinterpret the raw bytes of ANY
+    // sufficiently-large account (of either accepted owner) as price data,
+    // rather than rejecting accounts that were never written as a price update.
+    const PRICE_UPDATE_V2_DISCRIMINATOR: [u8; 8] = [85, 230, 203, 117, 219, 107, 107, 107];
+    require!(
+        data[0..8] == PRICE_UPDATE_V2_DISCRIMINATOR,
+        SolPredictError::InvalidOracleFeed
+    );
 
     // Deserialize manually from offset 8
     let price_update: PriceUpdateV2 = PriceUpdateV2::deserialize(&mut &data[8..])

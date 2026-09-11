@@ -63,7 +63,13 @@ pub struct RemoveLiquidity<'info> {
     )]
     pub liquidity_position: Account<'info, LiquidityPosition>,
 
-    /// Optional emergency-pause account. When present and paused, trading is halted.
+    /// Optional emergency-pause account. When present and paused, trading is
+    /// halted. Pinned to the canonical PDA so a caller cannot bypass the
+    /// pause by omitting or substituting an unrelated account.
+    #[account(
+        seeds = [PAUSE_SEED],
+        bump = emergency_pause.bump,
+    )]
     pub emergency_pause: Option<Account<'info, EmergencyPause>>,
 
     pub token_program: Program<'info, Token>,

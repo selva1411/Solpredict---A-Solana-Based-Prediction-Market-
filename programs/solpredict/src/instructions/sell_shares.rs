@@ -71,7 +71,13 @@ pub struct SellShares<'info> {
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
 
-    /// Optional emergency-pause account. When present and paused, trading is halted.
+    /// Optional emergency-pause account. When present and paused, trading is
+    /// halted. Pinned to the canonical PDA so a caller cannot bypass the
+    /// pause by omitting or substituting an unrelated account.
+    #[account(
+        seeds = [PAUSE_SEED],
+        bump = emergency_pause.bump,
+    )]
     pub emergency_pause: Option<Account<'info, EmergencyPause>>,
 }
 
