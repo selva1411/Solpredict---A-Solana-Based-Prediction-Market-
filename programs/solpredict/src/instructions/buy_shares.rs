@@ -85,7 +85,13 @@ pub struct BuyShares<'info> {
     pub user_position: Account<'info, UserPosition>,
 
     /// Optional emergency-pause account. When present and paused, trading is
-    /// halted. Absent when the program has never been paused.
+    /// halted. Absent when the program has never been paused. Pinned to the
+    /// canonical PDA so a caller cannot bypass the pause by omitting or
+    /// substituting an unrelated account.
+    #[account(
+        seeds = [PAUSE_SEED],
+        bump = emergency_pause.bump,
+    )]
     pub emergency_pause: Option<Account<'info, EmergencyPause>>,
 
     pub token_program: Program<'info, Token>,
