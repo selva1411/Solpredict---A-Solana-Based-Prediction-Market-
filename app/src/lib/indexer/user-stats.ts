@@ -170,7 +170,7 @@ export async function recomputeUserStats(
     await installUserStatsFunction();
     if (targetWallet) {
       await db.execute(
-        `SELECT recompute_user_stats('${targetWallet.replace(/'/g, "''")}')`
+        sql`SELECT recompute_user_stats(${targetWallet})`
       );
       logger.info(`[user-stats] recomputed user ${targetWallet}`);
       revalidateTag("leaderboard");

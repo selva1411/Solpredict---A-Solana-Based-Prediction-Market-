@@ -5,7 +5,7 @@ import { Program, AnchorProvider, type Idl } from "@coral-xyz/anchor";
 import { getDb } from "@/lib/db/client";
 import { reconcileMarkets, reconcileTrades } from "@/lib/indexer/reconciler";
 import { ok, serverError } from "@/lib/api-response";
-import { apiHandler } from "@/lib/api-handler";
+import { apiHandler, requireServiceKey } from "@/lib/api-handler";
 import { ENV } from "@/lib/env";
 import type { Solpredict } from "@/lib/idl/solpredict";
 import rawIdl from "@/lib/idl/solpredict.json";
@@ -16,6 +16,12 @@ const PROGRAM_ID =
   "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
 
 export const GET = apiHandler(async (req: NextRequest) => {
+  // Runs an expensive on-chain reconciliation pass (up to 500 markets/trades
+  // via RPC) — without this, any internet caller could trigger it on demand,
+  // exhausting RPC quota/cost.
+  if (!requireServiceKey(req)) {
+    return ok({ error: "Unauthorized" }, { status: 401 } as ResponseInit);
+  }
   if (!getDb()) return serverError("Database not available");
 
   try {
