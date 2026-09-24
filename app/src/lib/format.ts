@@ -126,25 +126,64 @@ export function calcNoPct(
   return 100 - calcYesPct(yesPool, noPool);
 }
 
-/** BN unix timestamp → readable string "Jul 23, 2026 14:30" */
-export function formatTs(ts: BN | number | null | undefined): string {
+/** BN, number, ISO string, or Date → readable string "Jul 23, 2026, 02:30 PM" */
+export function formatTs(
+  ts: BN | number | string | Date | null | undefined,
+  timeZone: string = "UTC"
+): string {
   if (ts == null) return "—";
-  const t = bnToNum(ts);
-  if (t === 0) return "—";
-  return new Date(t * 1000).toLocaleString("en-US", {
+  let date: Date;
+  if (ts instanceof Date) {
+    date = ts;
+  } else if (typeof ts === "string") {
+    const parsed = new Date(ts);
+    if (!Number.isNaN(parsed.getTime())) {
+      date = parsed;
+    } else {
+      const n = Number(ts);
+      if (Number.isNaN(n) || n === 0) return "—";
+      date = new Date(n > 1e11 ? n : n * 1000);
+    }
+  } else {
+    const t = bnToNum(ts as any);
+    if (t === 0 || Number.isNaN(t)) return "—";
+    date = new Date(t > 1e11 ? t : t * 1000);
+  }
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZone,
   });
 }
 
-/** Returns time remaining until unix timestamp */
-export function timeUntil(ts: BN | number | null | undefined): string {
+/** Returns time remaining until timestamp */
+export function timeUntil(
+  ts: BN | number | string | Date | null | undefined
+): string {
   if (ts == null) return "—";
-  const target = bnToNum(ts) * 1000;
-  if (!target) return "—";
+  let target = 0;
+  if (ts instanceof Date) {
+    target = ts.getTime();
+  } else if (typeof ts === "string") {
+    const parsed = new Date(ts).getTime();
+    if (!Number.isNaN(parsed)) {
+      target = parsed;
+    } else {
+      const n = Number(ts);
+      if (!Number.isNaN(n) && n > 0) {
+        target = n > 1e11 ? n : n * 1000;
+      }
+    }
+  } else {
+    const t = bnToNum(ts as any);
+    if (!t || Number.isNaN(t)) return "—";
+    target = t > 1e11 ? t : t * 1000;
+  }
+  if (!target || Number.isNaN(target)) return "—";
   const now = Date.now();
   const diff = target - now;
   if (diff <= 0) return "Ended";
@@ -158,14 +197,69 @@ export function timeUntil(ts: BN | number | null | undefined): string {
   return `${mins}m`;
 }
 
+/** BN, number, ISO string, or Date → "2m ago", "1h ago", "yesterday", "just now" */
+export function timeAgo(
+  ts: BN | number | string | Date | null | undefined
+): string {
+  if (ts == null) return "—";
+  let target = 0;
+  if (ts instanceof Date) {
+    target = ts.getTime();
+  } else if (typeof ts === "string") {
+    const parsed = new Date(ts).getTime();
+    if (!Number.isNaN(parsed)) {
+      target = parsed;
+    } else {
+      const n = Number(ts);
+      if (!Number.isNaN(n) && n > 0) target = n > 1e11 ? n : n * 1000;
+    }
+  } else {
+    const t = bnToNum(ts as any);
+    if (!t || Number.isNaN(t)) return "—";
+    target = t > 1e11 ? t : t * 1000;
+  }
+  if (!target || Number.isNaN(target)) return "—";
+
+  const diff = Date.now() - target;
+  if (diff < 0) return "just now";
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
+}
+
 export function formatTimeLeft(ts: BN | number | null | undefined): string {
   if (ts == null) return "—";
   return timeUntil(ts);
 }
 
-export function isActive(ts: BN | number | null | undefined): boolean {
+export function isActive(
+  ts: BN | number | string | Date | null | undefined
+): boolean {
   if (ts == null) return false;
-  const target = bnToNum(ts) * 1000;
+  let target = 0;
+  if (ts instanceof Date) {
+    target = ts.getTime();
+  } else if (typeof ts === "string") {
+    const parsed = new Date(ts).getTime();
+    if (!Number.isNaN(parsed)) {
+      target = parsed;
+    } else {
+      const n = Number(ts);
+      if (!Number.isNaN(n) && n > 0) target = n > 1e11 ? n : n * 1000;
+    }
+  } else {
+    const t = bnToNum(ts as any);
+    if (!t || Number.isNaN(t)) return false;
+    target = t > 1e11 ? t : t * 1000;
+  }
   return target > Date.now();
 }
 

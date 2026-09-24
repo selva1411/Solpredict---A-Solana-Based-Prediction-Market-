@@ -7,6 +7,7 @@ import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { useSolPrice } from "@/hooks/useSolPrice";
 import { useProgram } from "@/hooks/useProgram";
 import { useRealtime } from "@/hooks/useRealtime";
+import { subscribeAppActivity } from "@/lib/sync-events";
 import { keys } from "@/lib/api/keys";
 import { getYesMintPda, getNoMintPda } from "@/lib/pda";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
@@ -113,65 +114,69 @@ export default function PortfolioPage() {
 
     (async () => {
       const result: Record<string, OnChainPos> = {};
-      await Promise.all(
-        marketKeys.map(async (mk) => {
-          try {
-            const marketPda = new PublicKey(mk);
-            const yesMintPda = getYesMintPda(marketPda, program.programId);
-            const noMintPda = getNoMintPda(marketPda, program.programId);
-            const yesAta = getAssociatedTokenAddressSync(yesMintPda, publicKey);
-            const noAta = getAssociatedTokenAddressSync(noMintPda, publicKey);
+      const chunkSize = 3;
+      for (let i = 0; i < marketKeys.length; i += chunkSize) {
+        if (cancelled) return;
+        const chunk = marketKeys.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(async (mk) => {
+            try {
+              const marketPda = new PublicKey(mk);
+              const yesMintPda = getYesMintPda(marketPda, program.programId);
+              const noMintPda = getNoMintPda(marketPda, program.programId);
+              const yesAta = getAssociatedTokenAddressSync(yesMintPda, publicKey, true);
+              const noAta = getAssociatedTokenAddressSync(noMintPda, publicKey, true);
 
-            const [yesAcc, noAcc, marketAcc] = await Promise.all([
-              connection.getTokenAccountBalance(yesAta).catch(() => null),
-              connection.getTokenAccountBalance(noAta).catch(() => null),
-              program.account.market.fetch(marketPda).catch(() => null),
-            ]);
+              const [yesAcc, noAcc, marketAcc] = await Promise.all([
+                connection.getTokenAccountBalance(yesAta).catch(() => null),
+                connection.getTokenAccountBalance(noAta).catch(() => null),
+                program.account.market.fetch(marketPda).catch(() => null),
+              ]);
 
-            const yesShares = yesAcc?.value?.uiAmount ?? 0;
-            const noShares = noAcc?.value?.uiAmount ?? 0;
+              const yesShares = yesAcc?.value?.uiAmount ?? 0;
+              const noShares = noAcc?.value?.uiAmount ?? 0;
 
-            // Current YES/NO price from the REAL pool reserves (same numbers
-            // the market detail page's AMM reads).
-            const yPool = Number(marketAcc?.yesPoolLamports ?? 0);
-            const nPool = Number(marketAcc?.noPoolLamports ?? 0);
-            const totalPool = yPool + nPool;
-            const yesBps = totalPool > 0 ? yPool / totalPool : 0.5;
-            const yesPriceSol = yesBps * 0.01;
-            const noPriceSol = (1 - yesBps) * 0.01;
+              // Current YES/NO price from the REAL pool reserves
+              const yPool = Number(marketAcc?.yesPoolLamports ?? 0);
+              const nPool = Number(marketAcc?.noPoolLamports ?? 0);
+              const totalPool = yPool + nPool;
+              const yesBps = totalPool > 0 ? yPool / totalPool : 0.5;
+              const yesPriceSol = yesBps * 0.01;
+              const noPriceSol = (1 - yesBps) * 0.01;
 
-            // LP cost basis: the liquidity deposit mints YES/NO tokens 1:1
-            // with deposited lamports, so the on-chain LP account's
-            // yes/no_deposited IS the SOL the user paid for those tokens.
-            let lpYesCostSol = 0;
-            let lpNoCostSol = 0;
-            const [lpPda] = PublicKey.findProgramAddressSync(
-              [Buffer.from("lp"), marketPda.toBuffer(), publicKey.toBuffer()],
-              program.programId
-            );
-            const lpAccount = await connection
-              .getAccountInfo(lpPda)
-              .catch(() => null);
-            if (lpAccount && lpAccount.data.length >= 104) {
-              const data = lpAccount.data;
-              const u64 = (off: number) => Number(data.readBigUInt64LE(off));
-              lpYesCostSol = u64(80) / 1e9;
-              lpNoCostSol = u64(88) / 1e9;
+              let lpYesCostSol = 0;
+              let lpNoCostSol = 0;
+              const [lpPda] = PublicKey.findProgramAddressSync(
+                [Buffer.from("lp"), marketPda.toBuffer(), publicKey.toBuffer()],
+                program.programId
+              );
+              const lpAccount = await connection
+                .getAccountInfo(lpPda)
+                .catch(() => null);
+              if (lpAccount && lpAccount.data.length >= 104) {
+                const data = lpAccount.data;
+                const u64 = (off: number) => Number(data.readBigUInt64LE(off));
+                lpYesCostSol = u64(80) / 1e9;
+                lpNoCostSol = u64(88) / 1e9;
+              }
+
+              result[mk] = {
+                yesShares,
+                noShares,
+                lpYesCostSol,
+                lpNoCostSol,
+                yesPriceSol,
+                noPriceSol,
+              };
+            } catch {
+              // Non-critical — the overlay degrades to the DB list.
             }
-
-            result[mk] = {
-              yesShares,
-              noShares,
-              lpYesCostSol,
-              lpNoCostSol,
-              yesPriceSol,
-              noPriceSol,
-            };
-          } catch {
-            // Non-critical — the overlay degrades to the DB list.
-          }
-        })
-      );
+          })
+        );
+        if (i + chunkSize < marketKeys.length) {
+          await new Promise((res) => setTimeout(res, 50));
+        }
+      }
       if (!cancelled) setOnChainPos(result);
     })();
 
@@ -181,11 +186,10 @@ export default function PortfolioPage() {
     // Re-run when the connected wallet or the DB position set changes.
   }, [publicKey, positions, lpPositions, program, connection]);
 
-  const { isLoading, isError } = useQuery({
+  const { isLoading, isError, refetch } = useQuery({
     queryKey: keys.user.positions(walletStr ?? "none"),
     queryFn: async () => {
       // cache: "no-store" — never serve a stale cached positions response
-      // (the previous fetch could race a just-landed trade and freeze at 0).
       const r = await fetch(`/api/user/positions?wallet=${walletStr}`, {
         cache: "no-store",
       });
@@ -199,28 +203,37 @@ export default function PortfolioPage() {
       return data;
     },
     enabled: !!walletStr,
-    // Live-updating: poll every 12s so the portfolio revalues positions and
-    // picks up new trades without a manual refresh. The detail page also
-    // invalidates this key after every buy/sell/LP, and the realtime push
-    // below refreshes it instantly, so it reflects trades immediately.
     refetchInterval: 12_000,
     refetchOnWindowFocus: true,
-    staleTime: 5_000,
+    staleTime: 0,
   });
+
+  // Universal Cross-Page & Cross-Tab Activity Listener
+  useEffect(() => {
+    const unsub = subscribeAppActivity((detail) => {
+      if (!walletStr || !detail?.wallet || detail.wallet === walletStr) {
+        void refetch();
+        void queryClient.invalidateQueries({
+          queryKey: keys.user.positions(walletStr ?? "none"),
+        });
+      }
+    });
+    return () => unsub();
+  }, [walletStr, refetch, queryClient]);
 
   // Realtime push: after a confirmed buy/sell/LP the WS server broadcasts fresh
   // positions on the `positions:<wallet>` channel. Listen for it so the
-  // portfolio re-reads the DB immediately instead of waiting for the 12s poll —
-  // this is what makes trades appear/disappear on the portfolio right away.
+  // portfolio re-reads the DB immediately instead of waiting for the 12s poll.
   const rt = useRealtime(walletStr ? `positions:${walletStr}` : undefined);
   useEffect(() => {
     const unsub = rt.on("positions", () => {
-      queryClient.invalidateQueries({
+      void refetch();
+      void queryClient.invalidateQueries({
         queryKey: keys.user.positions(walletStr ?? "none"),
       });
     });
     return () => unsub?.();
-  }, [rt, queryClient, walletStr]);
+  }, [rt, refetch, queryClient, walletStr]);
   const loading = !!walletStr ? isLoading : false;
   const fetchError = !!walletStr ? isError : false;
 
@@ -381,15 +394,20 @@ export default function PortfolioPage() {
   if (!publicKey) {
     return (
       <main className="mx-auto w-full max-w-[1240px] px-6 py-24">
-        <div className="max-w-md mx-auto text-center">
-          <LabelLux className="mb-4">Portfolio</LabelLux>
-          <h1 className="font-display text-[34px] font-extrabold uppercase text-ink mb-3 tracking-tight">
-            Connect your <span className="text-magenta">wallet</span>
+        <div className="max-w-md mx-auto text-center p-8 rounded-2xl border border-hairline bg-cream shadow-sm">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-hairline bg-sheet text-[11px] font-mono uppercase tracking-wider text-ash mb-4">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+            Portfolio Ledger
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-3">
+            Connect Your Wallet
           </h1>
-          <p className="text-[15px] text-ash mb-8">
-            Connect a Solana wallet to view your positions and trade history.
+          <p className="text-[14px] text-ash mb-8 leading-relaxed">
+            Connect a Solana wallet to inspect open positions, track live P&amp;L, and manage liquidity positions.
           </p>
-          <ClientWalletButton />
+          <div className="flex justify-center">
+            <ClientWalletButton />
+          </div>
         </div>
       </main>
     );
@@ -397,11 +415,11 @@ export default function PortfolioPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-[1240px] px-6 py-24">
-        <div className="space-y-10">
-          <div className="w-48 h-3 bg-sheet skeleton-shimmer" />
-          <div className="w-full h-28 bg-sheet skeleton-shimmer" />
-          <div className="w-full h-64 bg-sheet skeleton-shimmer" />
+      <main className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-12">
+        <div className="space-y-6">
+          <div className="w-48 h-6 bg-sheet rounded animate-pulse" />
+          <div className="w-full h-32 bg-cream border border-hairline rounded-xl animate-pulse" />
+          <div className="w-full h-72 bg-cream border border-hairline rounded-xl animate-pulse" />
         </div>
       </main>
     );
@@ -410,10 +428,12 @@ export default function PortfolioPage() {
   if (fetchError) {
     return (
       <main className="mx-auto w-full max-w-[1240px] px-6 py-24 text-center">
-        <LabelLux className="mb-3">Data Feed Error</LabelLux>
-        <p className="text-[15px] text-ash max-w-sm mx-auto">
-          Failed to load portfolio data from the server. Please try again.
-        </p>
+        <div className="max-w-md mx-auto p-8 rounded-2xl border border-no/30 bg-cream">
+          <div className="font-mono text-[11px] uppercase tracking-wider text-no mb-2">Data Feed Error</div>
+          <p className="text-[14px] text-ash">
+            Failed to load portfolio data from the network. Please retry shortly.
+          </p>
+        </div>
       </main>
     );
   }
@@ -423,18 +443,20 @@ export default function PortfolioPage() {
   const winRatePct = (displayStats.winRate * 100).toFixed(0);
 
   return (
-    <main className="mx-auto w-full max-w-[1240px] px-6 py-14">
-      <div className="flex items-center gap-3 mb-3">
-        <span className="w-1.5 h-5 bg-magenta rounded-[1px]" />
-        <LabelLux>Portfolio</LabelLux>
+    <main className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8 text-ink">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="w-1.5 h-1.5 rounded-full bg-primary" />
+        <span className="font-mono text-[11px] uppercase tracking-wider text-ash">
+          Positions &amp; Yield Ledger
+        </span>
       </div>
-      <h1 className="font-display text-[44px] font-extrabold uppercase text-ink mb-12 leading-[.95] tracking-tight">
-        Position <span className="text-magenta">Ledger</span>
+      <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-ink mb-6">
+        Portfolio Ledger
       </h1>
 
       {/* Three large stats on one baseline, separated by vertical hairlines */}
-      <section className="surface rounded-[8px] grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-hairline mb-14 overflow-hidden">
-        <div className="py-10 pr-8 border-l-4 border-l-cyan">
+      <section className="border border-hairline bg-cream rounded-xl grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-hairline mb-8 overflow-hidden shadow-sm">
+        <div className="p-6">
           <Stat
             size="lg"
             label="Net Worth"
@@ -442,7 +464,7 @@ export default function PortfolioPage() {
             hint={usdValue ? `$${usdValue} USD` : undefined}
           />
         </div>
-        <div className="py-10 px-8 border-l-4 border-l-magenta">
+        <div className="p-6">
           <Stat
             size="lg"
             label="24h P&L"
@@ -454,7 +476,7 @@ export default function PortfolioPage() {
             }${displayStats.pnl24hPct.toFixed(2)}%`}
           />
         </div>
-        <div className="py-10 pl-8 border-l-4 border-l-grass">
+        <div className="p-6">
           <Stat
             size="lg"
             label="Win Rate"
@@ -470,36 +492,21 @@ export default function PortfolioPage() {
       </section>
 
       {categories.length > 1 && (
-        <div className="flex items-center gap-3 mb-8 flex-wrap">
-          <span className="font-mono text-[10px] uppercase tracking-[.16em] text-ash-dim">
-            Compare
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <span className="font-mono text-[10px] uppercase tracking-wider text-ash-dim">
+            Filter:
           </span>
           {["All", ...categories].map((cat) => {
-            const catClass =
-              cat === "Crypto"
-                ? "bg-cyan text-ink-static"
-                : cat === "Sports"
-                ? "bg-grass text-ink-static"
-                : cat === "Politics"
-                ? "bg-magenta text-ink-static"
-                : cat === "Tech"
-                ? "bg-yellow text-ink-static"
-                : "bg-sheet text-ink border border-hairline";
             const isSelected = selectedCategory === cat;
             return (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
                 aria-pressed={isSelected}
-                className={`cursor-pointer inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-[4px] border-2 transition-all font-mono text-[10px] uppercase tracking-[.14em] snap ${
+                className={`cursor-pointer inline-flex items-center h-8 px-3 rounded-lg font-mono text-[11px] transition-colors ${
                   isSelected
-                    ? cn(
-                        "border-ink font-bold",
-                        cat === "All" ? "bg-ink-fill text-white" : catClass
-                      )
-                    : cat === "All"
-                    ? "border-transparent text-ash hover:border-hairline-2 hover:text-ink"
-                    : `${catClass} opacity-50 hover:opacity-100`
+                    ? "bg-primary text-white font-medium"
+                    : "border border-hairline bg-sheet text-ash hover:text-ink hover:border-hairline-2"
                 }`}
               >
                 {cat}
@@ -509,83 +516,83 @@ export default function PortfolioPage() {
         </div>
       )}
 
-      <Rule className="mb-8" />
-
       {/* ACTIVE POSITIONS table */}
-      <section className="mb-14">
-        <div className="flex items-center gap-3 mb-4">
-          <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
-          <LabelLux>Active Positions ({filteredPositions.length})</LabelLux>
+      <section className="mb-10">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="w-1.5 h-3.5 bg-yes rounded-sm" />
+          <h2 className="font-mono text-[12px] font-semibold uppercase tracking-wider text-ink">
+            Active Positions ({filteredPositions.length})
+          </h2>
         </div>
         {filteredPositions.length === 0 ? (
-          <p className="text-[15px] text-ash-dim py-8">
-            No open positions
-            {selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}.
-            Browse markets to start trading.
-          </p>
+          <div className="p-8 text-center rounded-xl border border-hairline bg-cream font-mono text-[13px] text-ash">
+            No open positions{selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}. Browse active lines to trade.
+          </div>
         ) : (
-          <div className="surface rounded-[8px] overflow-hidden px-6">
+          <div className="rounded-xl border border-hairline bg-cream overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-hairline">
-                    <th className="py-3 pr-4 font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                  <tr className="border-b border-hairline bg-sheet/50">
+                    <th className="py-3 px-4 font-mono text-[10px] uppercase tracking-wider text-ash">
                       Market
                     </th>
-                    <th className="py-3 pr-4 font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 font-mono text-[10px] uppercase tracking-wider text-ash">
                       Side
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Shares
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Avg Price
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Current
                     </th>
-                    <th className="py-3 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       P&L
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-hairline">
                   {filteredPositions.map((p, i) => (
                     <tr
                       key={i}
-                      className="border-b border-hairline last:border-0 hover:bg-sheet transition-colors"
+                      className="hover:bg-sheet/40 transition-colors"
                     >
-                      <td className="py-4 pr-4 font-display text-[15px] text-ink max-w-xs truncate">
-                        {p.question}
+                      <td className="py-3.5 px-4 font-sans font-medium text-[14px] text-ink max-w-xs truncate">
+                        <a href={`/market/${p.marketPubkey}`} className="hover:text-primary transition-colors">
+                          {p.question}
+                        </a>
                       </td>
-                      <td className="py-4 pr-4 font-mono text-[13px]">
+                      <td className="py-3.5 px-4 font-mono text-[12px]">
                         <span
-                          className={`inline-flex items-center px-2 py-0.5 rounded-[4px] text-[11px] font-bold ${
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold ${
                             p.side === "YES"
-                              ? "bg-yes-fill text-ink border-2 border-ink"
-                              : "border-2 border-no bg-cream text-ink"
+                              ? "bg-yes-bg border border-yes/30 text-yes"
+                              : "bg-no-bg border border-no/30 text-no"
                           }`}
                         >
                           {p.side}
                         </span>
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-ash">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-ash">
                         {p.shares.toFixed(2)}
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-ash">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-ash">
                         {p.avgPriceSol.toFixed(3)}
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-ink num">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-ink font-semibold">
                         {p.currentPriceSol.toFixed(3)}
                       </td>
                       <td
-                        className={`py-4 text-right font-mono tnum text-[13px] ${
-                          p.pnlSol >= 0 ? "text-grass" : "text-magenta"
+                        className={`py-3.5 px-4 text-right font-mono tabular-nums text-[13px] font-bold ${
+                          p.pnlSol >= 0 ? "text-yes" : "text-no"
                         }`}
                       >
                         {p.pnlSol >= 0 ? "+" : ""}
                         {p.pnlSol.toFixed(3)}
-                        <span className="block text-[10px] opacity-70">
+                        <span className="block text-[10px] font-normal opacity-80">
                           ({p.pnlPercent >= 0 ? "+" : ""}
                           {p.pnlPercent.toFixed(1)}%)
                         </span>
@@ -601,75 +608,76 @@ export default function PortfolioPage() {
 
       {/* LIQUIDITY positions table */}
       <section>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <span className="w-1.5 h-5 bg-yellow rounded-[1px]" />
-            <LabelLux>Liquidity Positions ({filteredLp.length})</LabelLux>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="w-1.5 h-3.5 bg-primary rounded-sm" />
+            <h2 className="font-mono text-[12px] font-semibold uppercase tracking-wider text-ink">
+              Liquidity Positions ({filteredLp.length})
+            </h2>
           </div>
-          <span className="font-mono text-[10px] text-ash-dim uppercase tracking-[.16em]">
-            Fees tracked on-chain
+          <span className="font-mono text-[10px] text-ash-dim uppercase tracking-wider">
+            Fees settled on-chain
           </span>
         </div>
         {filteredLp.length === 0 ? (
-          <p className="text-[15px] text-ash-dim py-8">
-            No liquidity provided
-            {selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}. Visit
-            any market&apos;s LP tab to deposit seed liquidity and earn trading
-            fee yield.
-          </p>
+          <div className="p-8 text-center rounded-xl border border-hairline bg-cream font-mono text-[13px] text-ash">
+            No liquidity provided{selectedCategory !== "All" ? ` in ${selectedCategory}` : ""}. Visit any market&apos;s LP tab to deposit seed liquidity and earn trading fee yield.
+          </div>
         ) : (
-          <div className="surface rounded-[8px] overflow-hidden px-6">
+          <div className="rounded-xl border border-hairline bg-cream overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-hairline">
-                    <th className="py-3 pr-4 font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                  <tr className="border-b border-hairline bg-sheet/50">
+                    <th className="py-3 px-4 font-mono text-[10px] uppercase tracking-wider text-ash">
                       Market
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Deposited SOL
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       LP Tokens
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Est. Fee Yield
                     </th>
-                    <th className="py-3 pr-4 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       APY
                     </th>
-                    <th className="py-3 text-right font-mono text-[10px] uppercase tracking-[.18em] text-ash-dim">
+                    <th className="py-3 px-4 text-right font-mono text-[10px] uppercase tracking-wider text-ash">
                       Action
                     </th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-hairline">
                   {filteredLp.map((lp, i) => (
                     <tr
                       key={i}
-                      className="border-b border-hairline last:border-0 hover:bg-sheet transition-colors"
+                      className="hover:bg-sheet/40 transition-colors"
                     >
-                      <td className="py-4 pr-4 font-display text-[15px] text-ink max-w-xs truncate">
-                        {lp.question}
+                      <td className="py-3.5 px-4 font-sans font-medium text-[14px] text-ink max-w-xs truncate">
+                        <a href={`/market/${lp.marketPubkey}`} className="hover:text-primary transition-colors">
+                          {lp.question}
+                        </a>
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-ink num">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-ink font-semibold">
                         {lp.amountSol.toFixed(2)} SOL
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-inkblue num">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-primary">
                         {lp.lpTokens.toLocaleString()} LP
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-grass num">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-yes font-semibold">
                         {lp.estFeeEarnedSol > 0
                           ? `+${lp.estFeeEarnedSol.toFixed(3)} SOL`
                           : "—"}
                       </td>
-                      <td className="py-4 pr-4 text-right font-mono tnum text-[13px] text-inkblue num">
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums text-[13px] text-primary">
                         {lp.apy}
                       </td>
-                      <td className="py-4 text-right">
+                      <td className="py-3.5 px-4 text-right">
                         <a
                           href={`/market/${lp.marketPubkey}`}
-                          className="inline-flex items-center min-h-[40px] px-3 py-1.5 rounded-[4px] border-2 border-ink text-ink hover:bg-yellow hover:text-ink-static font-mono text-[10px] uppercase tracking-[.16em] transition-colors snap"
+                          className="inline-flex items-center px-3 py-1 rounded-md border border-hairline bg-sheet hover:border-primary hover:text-primary text-ink font-mono text-[11px] transition-colors"
                         >
                           Manage
                         </a>

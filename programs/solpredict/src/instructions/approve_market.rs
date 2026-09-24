@@ -91,8 +91,16 @@ pub fn handler(ctx: Context<ApproveMarket>) -> Result<()> {
 
     // 1. Validation checks (re-validate proposal data)
     require!(
-        proposal.end_ts > clock.unix_timestamp,
-        SolPredictError::InvalidEndTime
+        proposal.end_ts > clock.unix_timestamp + 3600,
+        SolPredictError::EndTimeTooSoon
+    );
+    require!(
+        proposal.end_ts <= clock.unix_timestamp + 365 * 24 * 3600,
+        SolPredictError::EndTimeTooFar
+    );
+    require!(
+        proposal.resolve_ts >= proposal.end_ts,
+        SolPredictError::ResolveTooSoon
     );
 
     // 2. Return bond to proposer

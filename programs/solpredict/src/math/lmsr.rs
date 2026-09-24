@@ -1,3 +1,11 @@
+//! # LMSR (Logarithmic Market Scoring Rule) — Reference Implementation
+//!
+//! **NOTE**: This module contains an experimental/reference LMSR mathematical model.
+//! The canonical, production AMM model actively used by instructions (`buy_shares`,
+//! `sell_shares`, spot price calculations, etc.) is located in [`crate::utils::amm_math`].
+//!
+//! Kept for reference, algorithmic comparison, and potential future LMSR pool migration.
+
 use crate::errors::SolPredictError;
 
 /// B parameter (liquidity parameter) in lamports.

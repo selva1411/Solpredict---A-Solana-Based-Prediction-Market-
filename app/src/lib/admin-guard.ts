@@ -43,7 +43,8 @@ export async function requireAdmin(
   // request ONLY when dev auth is explicitly enabled; production and any dev
   // build without `DEV_AUTH_ENABLED=1` still enforce real authentication.
   if (isDevAuthEnabled()) {
-    return { ok: true, identity: { wallet: "dev", method: "dev" } };
+    const wallet = req.headers.get("x-wallet")?.trim() || "dev";
+    return { ok: true, identity: { wallet, method: "dev" } };
   }
 
   const configured = (process.env.ADMIN_WALLET || "")
@@ -134,13 +135,18 @@ export async function requireAdmin(
 // ---------------------------------------------------------------------------
 const PROGRAM_ID = new PublicKey(
   process.env.NEXT_PUBLIC_PROGRAM_ID ||
-    "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG"
+    "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg"
 );
 
 let cachedAdmin: { wallet: string; ts: number } | null = null;
 const CACHE_TTL_MS = 60_000; // 1 minute
 
 async function fetchOnChainAdmin(): Promise<string | null> {
+  // In unit test runner, avoid outbound network RPC calls
+  if (process.env.VITEST || process.env.NODE_ENV === "test") {
+    return null;
+  }
+
   // Serve from cache if still fresh
   if (cachedAdmin && Date.now() - cachedAdmin.ts < CACHE_TTL_MS) {
     return cachedAdmin.wallet;
@@ -149,17 +155,24 @@ async function fetchOnChainAdmin(): Promise<string | null> {
   try {
     const conn = new Connection(ENV.serverRpcUrl, "confirmed");
     const configPda = getConfigPda(PROGRAM_ID);
-    const info = await conn.getAccountInfo(configPda);
+    const timeoutPromise = new Promise<null>((_, reject) =>
+      setTimeout(() => reject(new Error("RPC timeout")), 2000)
+    );
+    const info = await Promise.race([
+      conn.getAccountInfo(configPda),
+      timeoutPromise,
+    ]);
     if (!info || !info.data) return null;
 
-    // Config account layout: admin (32 bytes) is the first field.
-    const adminPubkey = new PublicKey(info.data.subarray(0, 32));
+    // Config account layout: 8-byte Anchor discriminator, then admin (32 bytes).
+    if (!info.data || info.data.length < 40) return null;
+    const adminPubkey = new PublicKey(info.data.subarray(8, 40));
     const wallet = adminPubkey.toBase58();
 
     cachedAdmin = { wallet, ts: Date.now() };
     return wallet;
   } catch {
-    // RPC unreachable — serve stale cache if available
+    // RPC unreachable or timed out — serve stale cache if available
     return cachedAdmin?.wallet ?? null;
   }
 }

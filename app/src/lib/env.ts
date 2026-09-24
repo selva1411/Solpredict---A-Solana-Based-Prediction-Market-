@@ -80,9 +80,9 @@ export const ENV = {
     return configured;
   },
 
-  get wsEndpoint(): string {
-    const configured =
-      process.env.NEXT_PUBLIC_WS_ENDPOINT ?? "ws://127.0.0.1:8900";
+  get wsEndpoint(): string | undefined {
+    const configured = process.env.NEXT_PUBLIC_WS_ENDPOINT;
+    if (!configured) return undefined;
 
     if (typeof window !== "undefined" && isLocalHostUrl(configured)) {
       const port = new URL(configured).port || "8900";
@@ -109,7 +109,7 @@ export const ENV = {
   get programId(): PublicKey {
     const id =
       process.env.NEXT_PUBLIC_PROGRAM_ID ??
-      "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
+      "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg";
     return new PublicKey(id);
   },
 

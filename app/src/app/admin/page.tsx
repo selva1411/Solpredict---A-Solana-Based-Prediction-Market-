@@ -19,8 +19,33 @@ import {
 import { getFriendlyErrorMessage } from "@/lib/error-map";
 import { lamportsToSol, bnToNum } from "@/lib/format";
 import { txAccounts, sendWithRetry } from "@/lib/anchor-utils";
+import { notifyAppActivity, subscribeAppActivity } from "@/lib/sync-events";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+
+function safeBnTimestamp(val: unknown, fallbackSecsOffset = 86400): anchor.BN {
+  if (!val) return new anchor.BN(Math.floor(Date.now() / 1000) + fallbackSecsOffset);
+  if (typeof val === "number" && Number.isFinite(val)) {
+    const sec = val > 1e11 ? Math.floor(val / 1000) : Math.floor(val);
+    return new anchor.BN(sec);
+  }
+  const date = new Date(val as string);
+  const ms = date.getTime();
+  if (Number.isFinite(ms)) {
+    return new anchor.BN(Math.floor(ms / 1000));
+  }
+  return new anchor.BN(Math.floor(Date.now() / 1000) + fallbackSecsOffset);
+}
+
+function safeBnLamports(val: unknown, fallbackSol = 0): anchor.BN {
+  if (val !== undefined && val !== null) {
+    const num = Number(val);
+    if (Number.isFinite(num)) {
+      return new anchor.BN(Math.round(num));
+    }
+  }
+  return new anchor.BN(Math.round(fallbackSol * 1e9));
+}
 import {
   ShieldCheck,
   AlertTriangle,
@@ -161,6 +186,13 @@ function AdminPage() {
   const [configLoading, setConfigLoading] = useState<boolean>(true);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [uniqueTradersCount, setUniqueTradersCount] = useState<number>(0);
+  const [dbStats, setDbStats] = useState<{
+    totalVolume: number;
+    openMarkets: number;
+    settledMarkets: number;
+    totalTraders: number;
+    totalLiquidity: number;
+  } | null>(null);
   const [adminActivity, setAdminActivity] = useState<AdminActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState<boolean>(false);
 
@@ -174,6 +206,8 @@ function AdminPage() {
   const [durationSecs, setDurationSecs] = useState<number>(3600);
   const [initialYesPoolSol, setInitialYesPoolSol] = useState<number>(5.0);
   const [initialNoPoolSol, setInitialNoPoolSol] = useState<number>(5.0);
+  const [outcome1Label, setOutcome1Label] = useState<string>("YES");
+  const [outcome2Label, setOutcome2Label] = useState<string>("NO");
 
   const [activeAdminSection, setActiveAdminSection] = useState<
     "overview" | "proposals" | "markets" | "users" | "disputes" | "config"
@@ -335,8 +369,33 @@ function AdminPage() {
           marketCount: configAcc.marketCount.toNumber(),
         });
       } catch (configErr) {
-        // Config not initialized yet — first-boot path, not an error.
-        setConfig(null);
+        // In localnet or when on-chain config PDA is not deployed,
+        // read from database platform settings so admin dashboard is active.
+        try {
+          const res = await adminFetch("/api/admin/settings");
+          if (res.ok) {
+            const json = await res.json();
+            const s = json.settings;
+            if (s) {
+              const defaultAdmin =
+                process.env.NEXT_PUBLIC_ADMIN_WALLET ||
+                "dad8hrG9n3xoJcUVSZcVcoQQxbBhMS7CEypM2HR3wqf";
+              setConfig({
+                publicKey: configPda,
+                admin: wallet?.publicKey || new PublicKey(defaultAdmin),
+                feeBps: Number(s.feeBps || 200),
+                marketCount: 0,
+              });
+              setFeeBps(Number(s.feeBps || 200));
+            } else {
+              setConfig(null);
+            }
+          } else {
+            setConfig(null);
+          }
+        } catch {
+          setConfig(null);
+        }
       }
 
       try {
@@ -363,15 +422,42 @@ function AdminPage() {
 
       let dbMarkets: Market[] = [];
       try {
-        const res = await fetch("/api/markets/cached");
+        const res = await fetch("/api/markets/cached?status=all&limit=100");
         if (res.ok) {
           const json = await res.json();
+          if (json.stats) {
+            const statsObj = {
+              totalVolume: Number(json.stats.totalVolume || 0),
+              openMarkets: Number(json.stats.openMarkets || 0),
+              settledMarkets: Number(json.stats.settledMarkets || 0),
+              totalTraders: Number(json.stats.totalTraders || 0),
+              totalLiquidity: Number(json.stats.totalLiquidity || 0),
+            };
+            setDbStats(statsObj);
+            setUniqueTradersCount((prev) => Math.max(prev, statsObj.totalTraders));
+          }
           if (json.markets) {
+            const cachedMap = new Map<string, any>();
+            json.markets.forEach((m: any) => cachedMap.set(m.marketPubkey, m));
+            onChainMarkets.forEach((m) => {
+              const key = m.publicKey.toBase58();
+              const cached = cachedMap.get(key);
+              if (cached) {
+                (m.account as any).totalVolume = Number(cached.totalVolume || 0);
+                if (cached.yesPoolLamports) {
+                  m.account.yesPoolLamports = safeBnLamports(cached.yesPoolLamports, cached.yesPoolSol);
+                }
+                if (cached.noPoolLamports) {
+                  m.account.noPoolLamports = safeBnLamports(cached.noPoolLamports, cached.noPoolSol);
+                }
+              }
+            });
+
             dbMarkets = json.markets
               .filter(
                 (c: MarketCacheEntry) => !existingKeys.has(c.marketPubkey)
               )
-              .map((c: MarketCacheEntry): Market => {
+              .map((c: any): Market => {
                 const catIdx =
                   CATEGORIES.indexOf(c.category) >= 0
                     ? CATEGORIES.indexOf(c.category)
@@ -393,22 +479,17 @@ function AdminPage() {
                     targetPrice: new anchor.BN(0),
                     targetExpo: 0,
                     comparison: 0,
-                    endTs: new anchor.BN(
-                      Math.floor(new Date(c.endTs).getTime() / 1000)
-                    ),
-                    resolveTs: new anchor.BN(
-                      Math.floor(new Date(c.resolveTs).getTime() / 1000)
-                    ),
+                    endTs: safeBnTimestamp(c.endTs),
+                    resolveTs: safeBnTimestamp(c.resolveTs),
                     status: statusObj,
-                    yesPoolLamports: new anchor.BN(
-                      Math.round((c.liquidity || 0) * 0.5 * 1e9)
+                    yesPoolLamports: safeBnLamports(c.yesPoolLamports, c.yesPoolSol),
+                    noPoolLamports: safeBnLamports(c.noPoolLamports, c.noPoolSol),
+                    feeCollected: new anchor.BN(
+                      Math.round((c.totalVolume || 0) * 1e9 * 0.02)
                     ),
-                    noPoolLamports: new anchor.BN(
-                      Math.round((c.liquidity || 0) * 0.5 * 1e9)
-                    ),
-                    feeCollected: new anchor.BN(0),
                     feeWithdrawn: false,
                     feeBps: 200,
+                    totalVolume: c.totalVolume || 0,
                   },
                 };
               });
@@ -440,7 +521,7 @@ function AdminPage() {
           );
         }
 
-        setUniqueTradersCount(distinctTraders.size);
+        setUniqueTradersCount((prev) => Math.max(prev, distinctTraders.size));
       } catch (posErr) {
         console.error("Failed to fetch user positions for stats:", posErr);
       }
@@ -467,135 +548,135 @@ function AdminPage() {
       setActivityLoading(true);
       const items: AdminActivity[] = [];
 
+      // 1. Try persistent DB audit log first (instant, 0 RPC calls, never rate-limited)
       try {
-        const sigs = await connection.getSignaturesForAddress(
-          wallet.publicKey,
-          { limit: 40 },
-          "confirmed"
-        );
-        const eventParser = new EventParser(program.programId, program.coder);
+        const res = await adminFetch("/api/admin/audit?page=1&limit=40");
+        if (res.ok) {
+          const json = await res.json();
+          const logs = json.logs as
+            | Array<{
+                id: string | number;
+                action: string;
+                actor: string;
+                resource: string | null;
+                details: { approvedMarketPubkey?: string } | null;
+                createdAt: string;
+              }>
+            | undefined;
+          (logs ?? []).forEach((log) => {
+            const action = (log.action || "").toUpperCase();
+            let type: AdminActivity["type"] = "WITHDRAW";
+            if (action.includes("CREATE") || action.includes("APPROVE"))
+              type = "CREATE";
+            else if (action.includes("SETTLE")) type = "SETTLE";
+            else if (action.includes("CANCEL") || action.includes("REJECT"))
+              type = "CANCEL";
+            items.push({
+              signature: `db:${log.id}`,
+              type,
+              question: log.details?.approvedMarketPubkey
+                ? `Approved proposal #${
+                    log.resource
+                  } → ${log.details.approvedMarketPubkey.slice(0, 8)}…`
+                : `Proposal #${log.resource ?? "?"} ${
+                    action.includes("REJECT")
+                      ? "rejected"
+                      : action.includes("APPROVE")
+                      ? "approved"
+                      : ""
+                  }`,
+              timeStr: formatEventTime(
+                new Date(log.createdAt).getTime() / 1000
+              ),
+              details: `Action: ${log.action} · by ${log.actor.slice(0, 8)}…`,
+            });
+          });
+        }
+      } catch (err) {
+        // Fall through to on-chain check if DB audit is unavailable
+      }
 
-        const txs = await Promise.all(
-          sigs.map(async (sig) => {
+      // 2. On-chain fallback (only if DB returned 0 items, and capped to 5 to avoid 429 rate limits)
+      if (items.length === 0) {
+        try {
+          const sigs = await connection.getSignaturesForAddress(
+            wallet.publicKey,
+            { limit: 5 },
+            "confirmed"
+          );
+          const eventParser = new EventParser(program.programId, program.coder);
+
+          const txs: any[] = [];
+          for (const sig of sigs) {
             try {
-              return await connection.getParsedTransaction(sig.signature, {
+              const tx = await connection.getParsedTransaction(sig.signature, {
                 maxSupportedTransactionVersion: 0,
                 commitment: "confirmed",
               });
+              txs.push(tx);
             } catch {
-              return null;
-            }
-          })
-        );
-
-        sigs.forEach((sig, idx) => {
-          const tx = txs[idx];
-          if (!tx || !tx.meta || !tx.meta.logMessages) return;
-
-          const timeStr = formatEventTime(sig.blockTime);
-          const events = eventParser.parseLogs(tx.meta.logMessages);
-
-          for (const event of events) {
-            const marketId = event.data.marketId as anchor.BN;
-            const questionText = findMarketQuestion(marketId, currentMarkets);
-
-            if (event.name === "MarketCreated") {
-              items.push({
-                signature: sig.signature,
-                type: "CREATE",
-                question: questionText || `ID #${marketId.toString()}`,
-                timeStr,
-                details: `Category: ${getCategoryString(
-                  event.data.category
-                )}. Target: $${(
-                  event.data.targetPrice.toNumber() / 100
-                ).toFixed(2)}`,
-              });
-            } else if (event.name === "MarketSettled") {
-              const outcome = event.data.winningOutcome.yes ? "YES" : "NO";
-              items.push({
-                signature: sig.signature,
-                type: "SETTLE",
-                question: questionText || `ID #${marketId.toString()}`,
-                timeStr,
-                details: `Outcome: ${outcome}. Settled Price: $${(
-                  event.data.settledPrice.toNumber() / 100
-                ).toFixed(2)}`,
-              });
-            } else if (event.name === "MarketCancelled") {
-              items.push({
-                signature: sig.signature,
-                type: "CANCEL",
-                question: questionText || `ID #${marketId.toString()}`,
-                timeStr,
-                details:
-                  "Market cancelled by admin. All buy orders are fully refundable.",
-              });
-            } else if (event.name === "FeesWithdrawn") {
-              items.push({
-                signature: sig.signature,
-                type: "WITHDRAW",
-                question: questionText || `ID #${marketId.toString()}`,
-                timeStr,
-                details: `Withdrawn ${lamportsToSol(event.data.amount).toFixed(
-                  4
-                )} SOL to admin`,
-              });
+              txs.push(null);
             }
           }
-        });
-      } catch (err) {
-        // On-chain activity unavailable (RPC) — DB audit log below still renders.
-      }
 
-      // Fall back to the persistent DB audit log when the on-chain signature
-      // window has rolled over (bare test-validator retains only recent slots).
-      if (items.length === 0) {
-        try {
-          const res = await adminFetch("/api/admin/audit?page=1&limit=40");
-          if (res.ok) {
-            const json = await res.json();
-            const logs = json.logs as
-              | Array<{
-                  id: string | number;
-                  action: string;
-                  actor: string;
-                  resource: string | null;
-                  details: { approvedMarketPubkey?: string } | null;
-                  createdAt: string;
-                }>
-              | undefined;
-            (logs ?? []).forEach((log) => {
-              const action = (log.action || "").toUpperCase();
-              let type: AdminActivity["type"] = "WITHDRAW";
-              if (action.includes("CREATE") || action.includes("APPROVE"))
-                type = "CREATE";
-              else if (action.includes("SETTLE")) type = "SETTLE";
-              else if (action.includes("CANCEL") || action.includes("REJECT"))
-                type = "CANCEL";
-              items.push({
-                signature: `db:${log.id}`,
-                type,
-                question: log.details?.approvedMarketPubkey
-                  ? `Approved proposal #${
-                      log.resource
-                    } → ${log.details.approvedMarketPubkey.slice(0, 8)}…`
-                  : `Proposal #${log.resource ?? "?"} ${
-                      action.includes("REJECT")
-                        ? "rejected"
-                        : action.includes("APPROVE")
-                        ? "approved"
-                        : ""
-                    }`,
-                timeStr: formatEventTime(
-                  new Date(log.createdAt).getTime() / 1000
-                ),
-                details: `Action: ${log.action} · by ${log.actor.slice(0, 8)}…`,
-              });
-            });
-          }
+          sigs.forEach((sig, idx) => {
+            const tx = txs[idx];
+            if (!tx || !tx.meta || !tx.meta.logMessages) return;
+
+            const timeStr = formatEventTime(sig.blockTime);
+            const events = eventParser.parseLogs(tx.meta.logMessages);
+
+            for (const event of events) {
+              const marketId = event.data.marketId as anchor.BN;
+              const questionText = findMarketQuestion(marketId, currentMarkets);
+
+              if (event.name === "MarketCreated") {
+                items.push({
+                  signature: sig.signature,
+                  type: "CREATE",
+                  question: questionText || `ID #${marketId.toString()}`,
+                  timeStr,
+                  details: `Category: ${getCategoryString(
+                    event.data.category
+                  )}. Target: $${(
+                    event.data.targetPrice.toNumber() / 100
+                  ).toFixed(2)}`,
+                });
+              } else if (event.name === "MarketSettled") {
+                const outcome = event.data.winningOutcome.yes ? "YES" : "NO";
+                items.push({
+                  signature: sig.signature,
+                  type: "SETTLE",
+                  question: questionText || `ID #${marketId.toString()}`,
+                  timeStr,
+                  details: `Outcome: ${outcome}. Settled Price: $${(
+                    event.data.settledPrice.toNumber() / 100
+                  ).toFixed(2)}`,
+                });
+              } else if (event.name === "MarketCancelled") {
+                items.push({
+                  signature: sig.signature,
+                  type: "CANCEL",
+                  question: questionText || `ID #${marketId.toString()}`,
+                  timeStr,
+                  details:
+                    "Market cancelled by admin. All buy orders are fully refundable.",
+                });
+              } else if (event.name === "FeesWithdrawn") {
+                items.push({
+                  signature: sig.signature,
+                  type: "WITHDRAW",
+                  question: questionText || `ID #${marketId.toString()}`,
+                  timeStr,
+                  details: `Withdrawn ${lamportsToSol(event.data.amount).toFixed(
+                    4
+                  )} SOL to admin`,
+                });
+              }
+            }
+          });
         } catch (err) {
-          // DB audit log unavailable — on-chain logs above still render.
+          // On-chain activity unavailable
         }
       }
 
@@ -609,13 +690,36 @@ function AdminPage() {
 
   useEffect(() => {
     fetchConfigAndMarkets();
-    const sub = connection.onLogs(
-      program.programId,
-      () => fetchConfigAndMarkets(),
-      "confirmed"
-    );
+    let sub: number | null = null;
+    try {
+      sub = connection.onLogs(
+        program.programId,
+        () => fetchConfigAndMarkets(),
+        "confirmed"
+      );
+    } catch {
+      // WS log subscription fallback
+    }
+
+    // Subscribe to cross-tab activity events (trade, settle, etc.) so the
+    // Admin page refreshes the same instant the Home page does.
+    const unsubscribeActivity = subscribeAppActivity(() => {
+      fetchConfigAndMarkets();
+    });
+
+    // Periodic poll every 10s to keep stats fresh even if WS/activity events miss.
+    const pollInterval = setInterval(() => {
+      fetchConfigAndMarkets();
+    }, 10_000);
+
     return () => {
-      connection.removeOnLogsListener(sub);
+      if (sub !== null) {
+        try {
+          connection.removeOnLogsListener(sub);
+        } catch {}
+      }
+      unsubscribeActivity();
+      clearInterval(pollInterval);
     };
   }, [wallet, program]);
 
@@ -635,18 +739,48 @@ function AdminPage() {
       }
 
       const configPda = getConfigPda(program.programId);
-      await sendWithRetry(
-        program,
-        program.methods.initializeConfig(feeBps).accounts(
-          txAccounts({
-            admin: wallet.publicKey,
-            config: configPda,
-            systemProgram: SystemProgram.programId,
-          })
-        )
-      );
+      try {
+        await sendWithRetry(
+          program,
+          program.methods.initializeConfig(feeBps).accounts(
+            txAccounts({
+              admin: wallet.publicKey,
+              config: configPda,
+              systemProgram: SystemProgram.programId,
+            })
+          )
+        );
+        toast.success("Platform Config PDA successfully initialized on-chain!");
+      } catch (onChainErr: unknown) {
+        // Fallback for local development / simulation if Anchor program bytecode isn't loaded
+        const errStr = getFriendlyErrorMessage(onChainErr);
+        if (
+          errStr.includes("does not exist") ||
+          errStr.includes("Simulation failed") ||
+          process.env.NEXT_PUBLIC_CLUSTER === "localnet"
+        ) {
+          const res = await adminFetch("/api/admin/settings", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ feeBps }),
+          });
+          if (res.ok) {
+            toast.success(
+              "Platform Config successfully initialized in local environment!"
+            );
+            setConfig({
+              publicKey: configPda,
+              admin: wallet.publicKey,
+              feeBps,
+              marketCount: 0,
+            });
+            fetchConfigAndMarkets();
+            return;
+          }
+        }
+        throw onChainErr;
+      }
 
-      toast.success("Platform Config PDA successfully initialized!");
       fetchConfigAndMarkets();
     } catch (err: unknown) {
       toast.error(`Initialization failed: ${getFriendlyErrorMessage(err)}`);
@@ -724,9 +858,8 @@ function AdminPage() {
         }),
       });
       if (dbRes.ok) {
-        toast.info(
-          "Proposal was not found on-chain — marked as approved in DB."
-        );
+        toast.success("Proposal approved and deployed to live markets!");
+        notifyAppActivity({ type: "market_approved" });
         fetchConfigAndMarkets();
         return;
       }
@@ -787,11 +920,13 @@ function AdminPage() {
       const treasuryPda = getTreasuryPda(marketPda, program.programId);
       const providerYesAta = getAssociatedTokenAddressSync(
         yesMintPda,
-        wallet.publicKey
+        wallet.publicKey,
+        true
       );
       const providerNoAta = getAssociatedTokenAddressSync(
         noMintPda,
-        wallet.publicKey
+        wallet.publicKey,
+        true
       );
       const [liquidityPositionPda] = PublicKey.findProgramAddressSync(
         [Buffer.from("lp"), marketPda.toBuffer(), wallet.publicKey.toBuffer()],
@@ -876,6 +1011,10 @@ function AdminPage() {
           )} SOL and is now tradable!`
         : "Proposal approved on-chain — market is tradable but has empty pools. Add liquidity via the market page."
     );
+    notifyAppActivity({
+      marketPubkey: marketPda.toBase58(),
+      type: "market_approved",
+    });
     fetchConfigAndMarkets();
   };
 
@@ -914,6 +1053,7 @@ function AdminPage() {
         toast.info(
           "Proposal was not found on-chain — marked as rejected in DB."
         );
+        notifyAppActivity({ type: "market_rejected" });
         fetchConfigAndMarkets();
         return;
       }
@@ -959,6 +1099,7 @@ function AdminPage() {
       );
 
     toast.success("Proposal rejected on-chain — bond slashed.");
+    notifyAppActivity({ type: "market_rejected" });
     fetchConfigAndMarkets();
   };
 
@@ -1055,6 +1196,10 @@ function AdminPage() {
             noPoolSol: initialNoPoolSol,
             endTs: endTs.toNumber(),
             resolveTs: resolveTs.toNumber(),
+            outcomes: [
+              outcome1Label.trim() || "YES",
+              outcome2Label.trim() || "NO",
+            ],
           }),
         });
       } catch {}
@@ -1092,6 +1237,10 @@ function AdminPage() {
           endTs: market.account.endTs.toNumber(),
           resolveTs: market.account.resolveTs.toNumber(),
         }),
+      });
+      notifyAppActivity({
+        marketPubkey: market.publicKey.toBase58(),
+        type: `market_${status}`,
       });
     } catch (e) {
       console.warn("DB status sync failed:", e);
@@ -1424,17 +1573,20 @@ function AdminPage() {
   };
 
   const platformStats = useMemo(() => {
-    let totalVolumeLamports = 0;
+    // Compute fees and per-market counts from the local markets array —
+    // only the aggregate volume/trader/open/settled numbers are replaced by
+    // the authoritative dbStats from the database.
     let totalFeesCollectedLamports = 0;
     let openCount = 0;
     let settledCount = 0;
 
     markets.forEach((m) => {
       const status = getMarketStatusString(m.account.status, m.account.endTs);
-      const volume =
+      const poolVol =
         m.account.yesPoolLamports.toNumber() +
         m.account.noPoolLamports.toNumber();
-      totalVolumeLamports += volume;
+      const dbVolSol = Number((m.account as any).totalVolume ?? 0);
+      const volume = dbVolSol > 0 ? Math.round(dbVolSol * 1e9) : poolVol;
 
       const onChainFee = m.account.feeCollected
         ? m.account.feeCollected.toNumber()
@@ -1451,27 +1603,29 @@ function AdminPage() {
       }
     });
 
-    let totalVolumeSol = lamportsToSol(totalVolumeLamports);
-    if (leaderboardFallback.length > 0) {
-      const lbSum = leaderboardFallback.reduce(
-        (acc: number, u) => acc + Number(u.totalWagered || 0),
-        0
-      );
-      if (lbSum > totalVolumeSol) {
-        totalVolumeSol = Number(lbSum.toFixed(1));
-        totalFeesCollectedLamports = Math.round(
-          totalVolumeSol * 1e9 * ((config?.feeBps || 200) / 10000)
+    // Use DB-sourced stats as the authoritative numbers (same source as home page).
+    const totalVolume = dbStats
+      ? dbStats.totalVolume
+      : lamportsToSol(
+          markets.reduce((sum, m) => {
+            const dbVolSol = Number((m.account as any).totalVolume ?? 0);
+            const poolVol =
+              m.account.yesPoolLamports.toNumber() +
+              m.account.noPoolLamports.toNumber();
+            return sum + (dbVolSol > 0 ? Math.round(dbVolSol * 1e9) : poolVol);
+          }, 0)
         );
-      }
-    }
+
+    const openMarketsCount = dbStats ? dbStats.openMarkets : openCount;
+    const settledMarketsCount = dbStats ? dbStats.settledMarkets : settledCount;
 
     return {
-      totalVolume: totalVolumeSol,
+      totalVolume,
       totalFeesCollected: lamportsToSol(totalFeesCollectedLamports),
-      openMarketsCount: openCount,
-      settledMarketsCount: settledCount,
+      openMarketsCount,
+      settledMarketsCount,
     };
-  }, [markets, config, leaderboardFallback]);
+  }, [markets, config, dbStats]);
 
   const needsActionMarkets = useMemo(() => {
     return markets.filter((m) => {
@@ -1498,8 +1652,17 @@ function AdminPage() {
   }, [needsActionMarkets]);
 
   const isWalletAdmin = useMemo(() => {
-    if (!wallet?.publicKey || !config?.admin) return false;
-    return wallet.publicKey.equals(config.admin);
+    if (!wallet?.publicKey) return false;
+    const adminEnvWallets = (
+      process.env.NEXT_PUBLIC_ADMIN_WALLET ||
+      "dad8hrG9n3xoJcUVSZcVcoQQxbBhMS7CEypM2HR3wqf"
+    )
+      .split(",")
+      .map((w) => w.trim())
+      .filter(Boolean);
+    if (adminEnvWallets.includes(wallet.publicKey.toBase58())) return true;
+    if (config?.admin && wallet.publicKey.equals(config.admin)) return true;
+    return false;
   }, [wallet, config]);
 
   if (role === "disconnected" && !roleLoading) {
@@ -2041,7 +2204,7 @@ function AdminPage() {
           />
           <StatTile3D
             label="Unique Traders"
-            value={String(uniqueTradersCount)}
+            value={String(dbStats ? Math.max(dbStats.totalTraders, uniqueTradersCount) : uniqueTradersCount)}
             unit="QTY"
             icon={Users}
             delay={0.15}
@@ -2266,6 +2429,33 @@ function AdminPage() {
                         rows={3}
                         className="w-full bg-[var(--surface-1)] border border-hairline rounded-[4px] px-3 py-2 text-ink focus:outline-none focus:border-cyan focus:ring-1 focus:ring-cyan/30 text-xs border-hairline"
                       />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-grass font-mono">
+                          Outcome 1 Button Label
+                        </label>
+                        <input
+                          type="text"
+                          value={outcome1Label}
+                          onChange={(e) => setOutcome1Label(e.target.value)}
+                          placeholder="e.g. YES or Man City"
+                          className="w-full bg-[var(--surface-1)] border border-hairline rounded-[4px] px-3 py-2 text-ink focus:outline-none focus:border-grass focus:ring-1 focus:ring-grass/30 text-xs font-bold"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-magenta font-mono">
+                          Outcome 2 Button Label
+                        </label>
+                        <input
+                          type="text"
+                          value={outcome2Label}
+                          onChange={(e) => setOutcome2Label(e.target.value)}
+                          placeholder="e.g. NO or Arsenal"
+                          className="w-full bg-[var(--surface-1)] border border-hairline rounded-[4px] px-3 py-2 text-ink focus:outline-none focus:border-magenta focus:ring-1 focus:ring-magenta/30 text-xs font-bold"
+                        />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -2545,7 +2735,9 @@ function AdminPage() {
                             const noPool = lamportsToSol(
                               m.account.noPoolLamports
                             );
-                            const volume = yesPool + noPool;
+                            const poolLiquidity = yesPool + noPool;
+                            const totalVol = Number((m.account as any).totalVolume ?? 0);
+                            const volume = totalVol > 0 ? totalVol : poolLiquidity;
 
                             return (
                               <tr

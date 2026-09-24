@@ -29,16 +29,25 @@ const CONNECT_RETRIES = 5;
 const CONNECT_RETRY_DELAY_MS = [200, 400, 800, 1600, 3000];
 
 function isTransientConnectError(err: unknown): boolean {
-  const msg =
+  const msg = (
     err instanceof Error
-      ? err.message
+      ? err.message + " " + ((err as any).cause?.message || "")
       : err && typeof err === "object" && "message" in err
       ? String((err as { message: unknown }).message)
-      : String(err);
-  // Connect-phase failure (endpoint unreachable while the compute wakes). The
-  // request never reached Postgres, so retrying cannot double-execute writes.
+      : String(err)
+  ).toLowerCase();
+
   return (
-    msg.includes("Error connecting to database") && msg.includes("fetch failed")
+    msg.includes("fetch failed") ||
+    msg.includes("error connecting to database") ||
+    msg.includes("timeout") ||
+    msg.includes("econnreset") ||
+    msg.includes("econnrefused") ||
+    msg.includes("etimedout") ||
+    msg.includes("neondberror") ||
+    msg.includes("socket hang up") ||
+    msg.includes("und_err_connect_timeout") ||
+    msg.includes("enotfound")
   );
 }
 

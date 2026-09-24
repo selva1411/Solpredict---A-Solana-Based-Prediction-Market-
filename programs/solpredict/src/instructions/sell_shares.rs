@@ -180,18 +180,36 @@ pub fn handler(
 
     let market = &mut ctx.accounts.market;
     if is_yes {
-        market.yes_pool_lamports = market.yes_pool_lamports.saturating_sub(refund);
-        market.yes_supply = market.yes_supply.saturating_sub(mint_amount_u64);
+        market.yes_pool_lamports = market
+            .yes_pool_lamports
+            .checked_sub(refund)
+            .ok_or(SolPredictError::MathOverflow)?;
+        market.yes_supply = market
+            .yes_supply
+            .checked_sub(mint_amount_u64)
+            .ok_or(SolPredictError::MathOverflow)?;
     } else {
-        market.no_pool_lamports = market.no_pool_lamports.saturating_sub(refund);
-        market.no_supply = market.no_supply.saturating_sub(mint_amount_u64);
+        market.no_pool_lamports = market
+            .no_pool_lamports
+            .checked_sub(refund)
+            .ok_or(SolPredictError::MathOverflow)?;
+        market.no_supply = market
+            .no_supply
+            .checked_sub(mint_amount_u64)
+            .ok_or(SolPredictError::MathOverflow)?;
     }
 
     let position = &mut ctx.accounts.user_position;
     if is_yes {
-        position.yes_amount = position.yes_amount.saturating_sub(mint_amount_u64);
+        position.yes_amount = position
+            .yes_amount
+            .checked_sub(mint_amount_u64)
+            .ok_or(SolPredictError::MathOverflow)?;
     } else {
-        position.no_amount = position.no_amount.saturating_sub(mint_amount_u64);
+        position.no_amount = position
+            .no_amount
+            .checked_sub(mint_amount_u64)
+            .ok_or(SolPredictError::MathOverflow)?;
     }
     position.total_spent_lamports = position.total_spent_lamports.saturating_sub(refund);
 

@@ -44,49 +44,27 @@ export function StatCard({
 }: StatCardProps) {
   const deltaColor =
     deltaTone === "pos"
-      ? "text-yes"
+      ? "text-[#1D7C59] dark:text-[#52B788]"
       : deltaTone === "neg"
-      ? "text-no"
-      : "text-ash";
-
-  const accentBg: Record<string, string> = {
-    cyan: "bg-cyan",
-    magenta: "bg-magenta",
-    yellow: "bg-yellow",
-    grass: "bg-grass",
-    ink: "bg-ink",
-  };
+      ? "text-[#B43C34] dark:text-[#E57373]"
+      : "text-[#555D65] dark:text-[#9AA1AA]";
 
   return (
     <div
       className={cn(
-        "relative overflow-hidden bg-cream border border-hairline rounded-[8px] shadow-panel p-5",
+        "relative overflow-hidden bg-white dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] p-4 transition-colors",
         className
       )}
     >
-      {accent && (
-        <>
-          <div
-            className={`absolute top-0 left-0 right-0 h-1 ${
-              accentBg[accent] ?? ""
-            }`}
-          />
-          <div
-            className={`absolute top-0 left-0 right-0 h-8 opacity-[0.04] ${
-              accentBg[accent] ?? ""
-            }`}
-          />
-        </>
-      )}
       <div className="relative flex items-center justify-between gap-2">
-        <span className="label-lux">{label}</span>
+        <span className="font-mono text-[10px] uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">{label}</span>
         {delta && (
-          <span className={`num font-mono text-[11px] font-bold ${deltaColor}`}>
+          <span className={`font-mono text-[10px] font-semibold ${deltaColor}`}>
             {delta}
           </span>
         )}
       </div>
-      <div className="relative mt-2.5 font-display font-extrabold text-[28px] leading-none tracking-tight text-ink">
+      <div className="relative mt-2 font-mono font-bold text-[24px] leading-none tracking-tight text-[#181A1C] dark:text-[#EAE8E3]">
         {staticValue !== undefined ? (
           <span suppressHydrationWarning>{staticValue}</span>
         ) : (
@@ -100,7 +78,7 @@ export function StatCard({
       </div>
       {hint && (
         <div
-          className="relative mt-2 text-[12px] text-ash"
+          className="relative mt-1.5 text-[11px] font-mono text-[#7F8892] dark:text-[#68707B]"
           suppressHydrationWarning
         >
           {hint}

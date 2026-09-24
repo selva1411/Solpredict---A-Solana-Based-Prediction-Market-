@@ -29,7 +29,7 @@ import { ENV } from "@/lib/env";
 const RPC_URL = ENV.serverRpcUrl;
 const PROGRAM_ID =
   process.env.NEXT_PUBLIC_PROGRAM_ID ??
-  "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
+  "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg";
 
 interface Args {
   loop: boolean;

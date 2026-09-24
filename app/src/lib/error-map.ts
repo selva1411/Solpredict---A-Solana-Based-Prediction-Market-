@@ -1,5 +1,6 @@
 export const ERROR_MAP: Record<string, string> = {
   Unauthorized: "Only the program admin can perform this action",
+  InvalidAdmin: "Caller is not authorized as admin",
   MarketNotOpen: "Market is not open for trading",
   MarketExpired: "Market trading period has expired",
   AlreadySettled: "Market has already been settled",

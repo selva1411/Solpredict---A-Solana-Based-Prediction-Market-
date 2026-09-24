@@ -3,6 +3,7 @@ import { useProgram } from "./useProgram";
 import { PublicKey } from "@solana/web3.js";
 import type { MarketCacheEntry } from "@/lib/db/markets-store";
 import { useRealtime } from "./useRealtime";
+import { subscribeAppActivity } from "@/lib/sync-events";
 import { getMarketPda } from "@/lib/pda";
 import * as anchor from "@coral-xyz/anchor";
 import { ENV } from "@/lib/env";
@@ -42,6 +43,7 @@ export interface MarketAccount {
   };
   // DB enrichment data
   _dbVolume24h?: number;
+  _dbTotalVolume?: number;
   _dbTraders?: number;
   _dbLiquidity?: number;
   _dbViewCount?: number;
@@ -124,8 +126,9 @@ export function dbRowToMarketAccount(
     },
     // Pass DB enrichment data through
     _dbVolume24h: m.volume24h ?? 0,
+    _dbTotalVolume: Number((m as any).totalVolume ?? 0),
     _dbTraders: m.traders ?? 0,
-    _dbLiquidity: m.liquidity ?? 0,
+    _dbLiquidity: Number((m as any).totalVolume || (m as any).totalPool || m.liquidity || 0),
     _dbViewCount: m.viewCount ?? 0,
     _dbCreatedAt: m.createdAt
       ? m.createdAt instanceof Date
@@ -247,31 +250,6 @@ export function useMarkets(
 
     if (dbSuccess) {
       setLoading(false);
-      // If on-chain is available, try to enrich with live data in background
-      if (program) {
-        try {
-          const all = await program.account.market.all();
-          if (all.length > 0) {
-            const parsed = all.map(onChainToMarketAccount);
-            // The active directory shows only tradeable (open) markets.
-            // Settled/cancelled boards must never appear there — showing them
-            // was the root cause of "Ended"/"Trading ended" cards for markets
-            // that should still be live. The watchlist view (status: "all")
-            // keeps every status so watchlisted settled markets stay visible.
-            const visible = includeClosed
-              ? parsed
-              : parsed.filter((m) => m.account.status === 0);
-            if (visible.length > 0) {
-              const sorted = visible.sort(
-                (a, b) => b.account.marketId - a.account.marketId
-              );
-              setMarkets(sorted);
-            }
-          }
-        } catch {
-          // On-chain unavailable — DB data is already set, that's fine
-        }
-      }
       return;
     }
 
@@ -332,8 +310,20 @@ export function useMarkets(
 
   useEffect(() => {
     const unsub = rt.on("markets", () => fetchMarkets());
-    return () => unsub?.();
+    const unsubUpdate = rt.on("update", () => fetchMarkets());
+    return () => {
+      unsub?.();
+      unsubUpdate?.();
+    };
   }, [fetchMarkets, rt]);
+
+  // Universal Cross-Page & Cross-Tab Activity Listener
+  useEffect(() => {
+    const unsub = subscribeAppActivity(() => {
+      fetchMarkets();
+    });
+    return () => unsub();
+  }, [fetchMarkets]);
 
   return { markets, loading, error, refetch: fetchMarkets };
 }

@@ -36,7 +36,9 @@ pub fn handler(ctx: Context<SettleMarket>) -> Result<()> {
     let clock = Clock::get()?;
 
     require!(market.oracle_feed_id != [0u8; 32], SolPredictError::UseManualSettlement);
-    require!(market.status == MarketStatus::Open, SolPredictError::AlreadySettled);
+    require!(market.status != MarketStatus::Settled, SolPredictError::AlreadySettled);
+    require!(market.status != MarketStatus::Cancelled, SolPredictError::AlreadyCancelled);
+    require!(market.status == MarketStatus::Open, SolPredictError::MarketNotOpen);
     require!(clock.unix_timestamp >= market.resolve_ts, SolPredictError::TooEarlyToSettle);
 
     let validated_price = oracle::validate_and_read_price(
@@ -82,7 +84,7 @@ pub fn handler(ctx: Context<SettleMarket>) -> Result<()> {
         WinningOutcome::Unset => 0,
     };
 
-    let fee = payout_math::calculate_fee(losing_pool, ctx.accounts.config.fee_bps)?;
+    let fee = payout_math::calculate_fee(losing_pool, market.fee_bps)?;
     let total_payout_pool = total_pool.checked_sub(fee).ok_or(SolPredictError::MathOverflow)?;
 
     ctx.accounts.market.reentrancy_lock.acquire(&crate::ID)?;

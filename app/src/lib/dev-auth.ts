@@ -17,6 +17,9 @@
 export function isDevAuthEnabled(): boolean {
   return (
     process.env.NODE_ENV === "development" &&
-    process.env.DEV_AUTH_ENABLED === "1"
+    (process.env.DEV_AUTH_ENABLED === "1" ||
+      process.env.DEV_AUTH_ENABLED === "true" ||
+      process.env.NEXT_PUBLIC_DEV_AUTH_ENABLED === "1" ||
+      process.env.NEXT_PUBLIC_DEV_AUTH_ENABLED === "true")
   );
 }

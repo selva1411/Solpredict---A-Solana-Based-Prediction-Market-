@@ -65,6 +65,7 @@ pub fn handler(ctx: Context<EmergencyWithdrawAccounts>) -> Result<()> {
     //     (and it is 0 until settlement, so the require below rejects).
     let withdraw_amount = market.fee_collected.min(treasury_balance);
     require!(withdraw_amount > 0, SolPredictError::NoFeesToWithdraw);
+    require!(!market.fee_withdrawn, SolPredictError::FeeAlreadyWithdrawn);
 
     let market_id = market.market_id;
     let treasury_bump = market.treasury_bump;
@@ -72,6 +73,7 @@ pub fn handler(ctx: Context<EmergencyWithdrawAccounts>) -> Result<()> {
     let admin_key = ctx.accounts.admin.key();
 
     market.reentrancy_lock.acquire(&crate::ID)?;
+    market.fee_withdrawn = true;
 
     system_program::transfer(
         CpiContext::new_with_signer(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 
 type MessageHandler = (data: Record<string, unknown>) => void;
 
@@ -25,20 +25,31 @@ interface RealtimeState {
 function resolveWsUrl(): string {
   const configured =
     process.env.NEXT_PUBLIC_WS_URL ||
-    (typeof window !== "undefined" ? process.env.NEXT_PUBLIC_WS_PORT : "") ||
+    process.env.NEXT_PUBLIC_WS_PORT ||
     "";
-  if (typeof window === "undefined") return configured;
+  if (!configured || typeof window === "undefined") return "";
   try {
-    const u = configured ? new URL(configured) : null;
+    const isOnlyPort = /^\d+$/.test(configured);
+    const u = isOnlyPort ? null : new URL(configured);
+    const targetPort = isOnlyPort ? configured : u?.port;
+
+    // Never attempt to connect a WebSocket to the Next.js page's own HTTP server port
+    if (targetPort && window.location.port === targetPort) {
+      return "";
+    }
+
+    if (isOnlyPort) {
+      const proto = window.location.protocol === "https:" ? "wss" : "ws";
+      return `${proto}://${window.location.hostname}:${configured}`;
+    }
+
     const isLocalHost =
       !u ||
       ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(u.hostname) ||
       /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(u.hostname);
-    // Local WS server (port 3001): use the CURRENT page host so it works from
-    // localhost, a LAN IP, or a tunnel host. Remote (devnet/mainnet) WS keeps
-    // its configured address.
+
     const hostname = isLocalHost ? window.location.hostname : u!.hostname;
-    const port = u?.port || "3001";
+    const port = u?.port;
     const proto = isLocalHost
       ? window.location.protocol === "https:"
         ? "wss"
@@ -46,9 +57,9 @@ function resolveWsUrl(): string {
       : u!.protocol.startsWith("wss")
       ? "wss"
       : "ws";
-    return `${proto}://${hostname}:${port}`;
+    return port ? `${proto}://${hostname}:${port}` : `${proto}://${hostname}`;
   } catch {
-    return configured;
+    return "";
   }
 }
 
@@ -231,6 +242,15 @@ export function useRealtime(channel?: string, handler?: MessageHandler) {
               for (const h of eventHandlers) h(data || msg);
             }
           }
+
+          if (msgChannel && eventName) {
+            const combinedHandlers = handlersRef.current.get(
+              `${msgChannel}:${eventName}`
+            );
+            if (combinedHandlers) {
+              for (const h of combinedHandlers) h(data || msg);
+            }
+          }
         } catch {}
       };
 
@@ -261,15 +281,24 @@ export function useRealtime(channel?: string, handler?: MessageHandler) {
   connectRef.current = connect;
 
   const subscribe = useCallback((ch: string) => {
-    if (!subscriptionsRef.current.includes(ch)) {
-      subscriptionsRef.current.push(ch);
+    const toSub = [ch];
+    if (ch.includes(":")) {
+      const base = ch.split(":")[0];
+      if (!subscriptionsRef.current.includes(base)) {
+        toSub.push(base);
+      }
+    }
+    for (const item of toSub) {
+      if (!subscriptionsRef.current.includes(item)) {
+        subscriptionsRef.current.push(item);
+      }
     }
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: "subscribe", channels: [ch] }));
+      wsRef.current.send(JSON.stringify({ type: "subscribe", channels: toSub }));
     }
     setState((s) => {
-      if (s.subscriptions.includes(ch)) return s;
-      return { ...s, subscriptions: [...s.subscriptions, ch] };
+      const next = Array.from(new Set([...s.subscriptions, ...toSub]));
+      return { ...s, subscriptions: next };
     });
   }, []);
 
@@ -328,5 +357,8 @@ export function useRealtime(channel?: string, handler?: MessageHandler) {
     };
   }, [connect, disconnect]);
 
-  return { ...state, connect, disconnect, subscribe, unsubscribe, on, send };
+  return useMemo(
+    () => ({ ...state, connect, disconnect, subscribe, unsubscribe, on, send }),
+    [state, connect, disconnect, subscribe, unsubscribe, on, send]
+  );
 }

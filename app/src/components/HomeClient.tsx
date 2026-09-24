@@ -3,10 +3,16 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, ArrowUpRight, TrendingUp } from "lucide-react";
-import { LabelLux } from "@/components/ui/label-lux";
-import { Rule } from "@/components/ui/rule";
-import { StatCard } from "@/components/ui/stat-card";
+import {
+  ArrowRight,
+  Activity,
+  Layers,
+  Users,
+  ShieldCheck,
+  Search,
+  Flame,
+  Compass,
+} from "lucide-react";
 import { MarketCard } from "@/components/MarketCard";
 import { WatchlistExpiryChecker } from "@/components/WatchlistExpiryChecker";
 import type { UiMarket } from "@/lib/market-adapter";
@@ -24,14 +30,6 @@ const HOME_CATEGORIES = [
   "Other",
 ] as const;
 
-const CATEGORY_BLOCK: Record<string, string> = {
-  Crypto: "bg-cyan text-ink-static",
-  Sports: "bg-grass text-ink-static",
-  Politics: "bg-magenta text-white dark:text-ink-static",
-  Tech: "bg-yellow text-ink-static",
-  Other: "bg-sheet text-ink border border-hairline",
-};
-
 export default function HomeClient({
   initialMarkets,
   initialStats,
@@ -42,10 +40,13 @@ export default function HomeClient({
   const router = useRouter();
   const [category, setCategory] =
     useState<(typeof HOME_CATEGORIES)[number]>("All");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const { markets: onChainMarkets, loading } = useMarkets(
     10_000,
     initialMarkets
   );
+  const { data: stats } = usePlatformStats(initialStats);
 
   const MARKETS: UiMarket[] = useMemo(
     () => onChainMarketsToUi(onChainMarkets ?? []),
@@ -56,16 +57,38 @@ export default function HomeClient({
     router.push(`/market/${m.id}`);
   };
 
-  const filteredMarkets = useMemo(
+  const filteredMarkets = useMemo(() => {
+    let list = MARKETS;
+    if (category !== "All") {
+      list = list.filter((m) => m.category === category);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.question.toLowerCase().includes(q) ||
+          m.category.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [MARKETS, category, searchQuery]);
+
+  const trendingMarkets = useMemo(
     () =>
-      category === "All"
-        ? MARKETS
-        : MARKETS.filter((m) => m.category === category),
-    [MARKETS, category]
+      [...MARKETS]
+        .filter((m) => m.status === "open")
+        .sort((a, b) => (b.liquidity || 0) - (a.liquidity || 0))
+        .slice(0, 4),
+    [MARKETS]
   );
 
+  const volume24hNum = stats ? Number(stats.volume24h ?? 0) : 0;
+  const totalVolumeNum = stats ? Number(stats.totalVolume ?? 0) : 0;
+  const totalTradersNum = stats ? Number(stats.totalTraders ?? 0) : 0;
+  const openMarketsNum = stats ? Number(stats.openMarkets ?? 0) : MARKETS.length;
+
   return (
-    <div className="min-h-screen flex flex-col bg-ground text-ink">
+    <div className="min-h-screen flex flex-col bg-[var(--color-ground,#F8F7F4)] text-[var(--color-ink,#181A1C)] transition-colors">
       <WatchlistExpiryChecker
         markets={initialMarkets.map((m) => ({
           marketPubkey: m.marketPubkey,
@@ -76,410 +99,264 @@ export default function HomeClient({
             m.endTs instanceof Date ? m.endTs.toISOString() : String(m.endTs),
         }))}
       />
-      <HomeHero
-        markets={MARKETS}
-        onOpenMarket={openMarket}
-        initialStats={initialStats}
-        loading={loading && MARKETS.length === 0}
-      />
-      <main className="mx-auto w-full max-w-[1240px] px-4 sm:px-6 pt-8 pb-16">
-        <HomeSections
-          markets={filteredMarkets}
-          allMarkets={MARKETS}
-          category={category}
-          setCategory={setCategory}
-          onOpenMarket={openMarket}
-          loading={loading && MARKETS.length === 0}
-          initialStats={initialStats}
-        />
-      </main>
-    </div>
-  );
-}
 
-type HeroProps = {
-  markets: UiMarket[];
-  onOpenMarket: (m: UiMarket) => void;
-  loading: boolean;
-  initialStats?: PlatformStats | null;
-};
+      {/* ── EDITORIAL FINANCIAL HERO ── */}
+      <section className="relative border-b border-[#E2DFD7] dark:border-[#2A2F36] py-10 sm:py-14 bg-white dark:bg-[#16181C]">
+        <div className="relative mx-auto max-w-[1360px] px-4 sm:px-6">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
+            <div className="max-w-2xl space-y-5">
+              {/* Live Status Tag */}
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1F2329] border border-[#E2DFD7] dark:border-[#2E353F]">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1D7C59]" />
+                <span className="text-[10px] text-[#555D65] dark:text-[#9AA1AA] font-semibold font-mono tracking-wider">
+                  SOLANA DEVNET · AMM V1 ACTIVE · PYTH ORACLES
+                </span>
+              </div>
 
-function HomeHero(props: HeroProps) {
-  const { loading } = props;
-  if (loading) {
-    return (
-      <section className="relative py-14 md:py-20 overflow-hidden">
-        <div className="absolute inset-0 hero-gradient pointer-events-none" />
-        <div className="relative mx-auto w-full max-w-[1240px] px-4 sm:px-6">
-          <div className="flex flex-col md:flex-row gap-8 md:gap-12 items-start">
-            <div className="flex-1">
-              <div className="w-40 h-2.5 bg-sheet rounded shimmer mb-6" />
-              <div className="w-2/3 h-20 bg-sheet rounded shimmer" />
-              <div className="mt-3 w-full max-w-[40ch] h-14 bg-sheet rounded shimmer" />
-              <div className="mt-6 flex gap-3">
-                <div className="w-36 h-12 bg-sheet rounded shimmer" />
-                <div className="w-36 h-12 bg-sheet rounded shimmer" />
+              {/* Bold Editorial Headline */}
+              <h1
+                className="text-[34px] sm:text-[46px] lg:text-[52px] font-bold tracking-tight text-[#181A1C] dark:text-[#EAE8E3] leading-[1.08]"
+                style={{ fontFamily: "var(--font-syne)" }}
+              >
+                Prediction Exchange <br className="hidden sm:inline" />
+                <span className="text-[#1F3A52] dark:text-[#7A9BB5]">
+                  on Solana.
+                </span>
+              </h1>
+
+              <p className="text-[14px] sm:text-[15px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed max-w-[54ch]">
+                The high-performance prediction exchange. Trade YES and NO shares on crypto, macro, and world events with continuous CPMM liquidity and instant on-chain settlement.
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <Link
+                  href="/markets"
+                  className="inline-flex items-center gap-1.5 px-4 h-9 rounded-[3px] bg-[#1F3A52] hover:bg-[#16293B] text-white font-medium text-[12px] transition-colors cursor-pointer"
+                >
+                  Explore Markets <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+                <Link
+                  href="/create"
+                  className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] text-[#181A1C] dark:text-[#EAE8E3] font-medium text-[12px] transition-colors cursor-pointer"
+                >
+                  + Propose Market
+                </Link>
               </div>
             </div>
-            <div className="flex-1 grid grid-cols-3 gap-3">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-28 bg-sheet rounded shimmer" />
-              ))}
+
+            {/* ── STAT RAIL — 4 Flat Editorial Metric Tiles ── */}
+            <div className="grid grid-cols-2 gap-2.5 w-full lg:w-[460px]">
+              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+                <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
+                  Active Lines
+                  <Activity className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                </span>
+                <span
+                  className="text-[24px] font-bold text-[#181A1C] dark:text-[#EAE8E3] tabular-nums mt-1 font-mono"
+                >
+                  {openMarketsNum}
+                </span>
+                <span className="text-[10px] text-[#1D7C59] font-mono mt-0.5">● Live on devnet</span>
+              </div>
+
+              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+                <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
+                  24h Volume
+                  <Flame className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                </span>
+                <span
+                  className="text-[24px] font-bold text-[#181A1C] dark:text-[#EAE8E3] tabular-nums mt-1 font-mono"
+                >
+                  {volume24hNum.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  <span className="text-[12px] text-[#7F8892] dark:text-[#68707B] font-normal ml-1">SOL</span>
+                </span>
+                <span className="text-[10px] text-[#7F8892] dark:text-[#68707B] font-mono mt-0.5">24h volume traded</span>
+              </div>
+
+              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+                <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
+                  Total Volume
+                  <Layers className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                </span>
+                <span
+                  className="text-[24px] font-bold text-[#181A1C] dark:text-[#EAE8E3] tabular-nums mt-1 font-mono"
+                >
+                  {totalVolumeNum.toLocaleString(undefined, {
+                    minimumFractionDigits: 1,
+                    maximumFractionDigits: 1,
+                  })}
+                  <span className="text-[12px] text-[#7F8892] dark:text-[#68707B] font-normal ml-1">SOL</span>
+                </span>
+                <span className="text-[10px] text-[#7F8892] dark:text-[#68707B] font-mono mt-0.5">Lifetime settled</span>
+              </div>
+
+              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+                <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
+                  Traders
+                  <Users className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                </span>
+                <span
+                  className="text-[24px] font-bold text-[#181A1C] dark:text-[#EAE8E3] tabular-nums mt-1 font-mono"
+                >
+                  {totalTradersNum.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-[#7F8892] dark:text-[#68707B] font-mono mt-0.5">Connected accounts</span>
+              </div>
             </div>
           </div>
         </div>
       </section>
-    );
-  }
-  return <HeroInnards {...props} />;
-}
 
-function HeroInnards({
-  markets,
-  initialStats,
-}: Pick<HeroProps, "markets" | "initialStats">) {
-  const { data: stats } = usePlatformStats(initialStats);
-  const volume24hNum = stats ? Number(stats.volume24h ?? 0) : 0;
-  const totalVolumeNum = stats ? Number(stats.totalVolume ?? 0) : 0;
-
-  return (
-    <section className="relative py-14 md:py-20 overflow-hidden">
-      {/* Subtle CMYK gradient background */}
-      <div className="absolute inset-0 hero-gradient pointer-events-none" />
-      <div className="relative mx-auto w-full max-w-[1240px] px-4 sm:px-6">
-        {/* CMYK block hero — the signature Studio Signal composition */}
-        <div className="flex flex-col md:flex-row gap-8 md:gap-12 items-start">
-          {/* Text column */}
-          <div className="flex-1 max-w-[680px]">
-            <div className="flex items-center gap-2.5 mb-6">
-              <span className="live-dot !bg-yes !before:bg-yes" />
-              <span className="font-mono text-[10px] font-bold tracking-wider uppercase text-ash">
-                Live on Solana
-              </span>
-              <span
-                className="hidden sm:inline-flex h-4 w-px bg-hairline"
-                aria-hidden
-              />
-              <span className="hidden sm:inline font-mono text-[10px] font-bold tracking-wider uppercase text-ash-dim">
-                CPMM · Pyth · On-chain
-              </span>
-            </div>
-
-            <h1
-              className="font-display font-black text-ink"
-              style={{
-                fontSize: "clamp(2.5rem, 6vw, 4.5rem)",
-                lineHeight: 0.95,
-                letterSpacing: "-0.035em",
-              }}
-            >
-              Conviction,
-              <br />
-              <span className="relative inline-block">
-                <span className="bg-magenta text-white dark:text-ink-static px-2.5 py-0.5 rounded-[4px] inline-block">
-                  priced.
-                </span>
-                <span className="absolute -bottom-1 left-0 right-0 h-1 bg-magenta/20 rounded-full blur-sm" />
-              </span>
-            </h1>
-
-            <p className="text-[15px] text-ink-soft leading-relaxed mt-7 max-w-[48ch]">
-              Trade YES or NO on the future. Constant-product pricing, Pyth
-              oracle resolution, and pro-rata on-chain payouts. Understand the
-              odds in seconds — no crypto fluency required.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3 mt-8">
+      <main className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8 flex-1 flex flex-col gap-9">
+        {/* ── TRENDING MARKETS ── */}
+        {trendingMarkets.length > 0 && (
+          <section className="space-y-3.5">
+            <div className="flex items-center justify-between border-b border-[#E2DFD7] dark:border-[#2A2F36] pb-2.5">
+              <div className="flex items-center gap-2">
+                <h2 className="text-[17px] sm:text-[18px] font-bold tracking-tight text-[#181A1C] dark:text-[#EAE8E3]">
+                  Trending Markets
+                </h2>
+              </div>
               <Link
                 href="/markets"
-                className="inline-flex items-center gap-2 px-6 h-12 rounded-[4px] bg-ink-fill text-white hover:bg-ink-fill-fill-soft text-[14px] font-bold transition-all snap card-hover-glow"
+                className="font-sans text-[12px] font-medium text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3] transition-colors flex items-center gap-1"
               >
-                Browse Markets <ArrowRight className="w-4 h-4" />
-              </Link>
-              <Link
-                href="/create"
-                className="inline-flex items-center gap-2 px-6 h-12 rounded-[4px] border-2 border-ink text-ink hover:bg-yellow hover:text-ink-static text-[14px] font-bold transition-all snap"
-              >
-                Propose a Market
+                View all <ArrowRight className="w-3 h-3" />
               </Link>
             </div>
 
-            {/* Trust signals */}
-            <div className="flex flex-wrap items-center gap-4 mt-8 text-[11px] font-mono text-ash-dim">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-yes" />
-                On-chain settlement
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-inkblue" />
-                Pyth oracle
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-magenta" />
-                No custody
-              </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+              {trendingMarkets.map((m, i) => (
+                <MarketCard
+                  key={m.id}
+                  market={m}
+                  index={i}
+                  onClick={() => openMarket(m)}
+                />
+              ))}
             </div>
-          </div>
-
-          {/* CMYK stat blocks — the modular colour field */}
-          {stats && (
-            <div className="flex-1 grid grid-cols-3 gap-3 min-w-0">
-              <StatCard
-                label="Open"
-                value={stats.openMarkets ?? 0}
-                accent="cyan"
-                className="min-w-0 card-hover-glow"
-              />
-              <StatCard
-                label="Volume"
-                value={totalVolumeNum}
-                decimals={1}
-                suffix=" SOL"
-                accent="magenta"
-                hint={`${volume24hNum.toFixed(1)} SOL 24h`}
-                className="min-w-0 card-hover-glow"
-              />
-              <StatCard
-                label="Traders"
-                value={stats.totalTraders ?? 0}
-                accent="grass"
-                className="min-w-0 card-hover-glow"
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function HomeSections({
-  markets,
-  allMarkets,
-  category,
-  setCategory,
-  onOpenMarket,
-  loading,
-  initialStats,
-}: HeroProps & {
-  allMarkets: UiMarket[];
-  category: (typeof HOME_CATEGORIES)[number];
-  setCategory: (c: (typeof HOME_CATEGORIES)[number]) => void;
-}) {
-  const trending = useMemo(
-    () =>
-      allMarkets
-        .filter((m) => m.liquidity > 0)
-        .sort((a, b) => b.liquidity - a.liquidity)
-        .slice(0, 8),
-    [allMarkets]
-  );
-
-  return (
-    <div>
-      {/* Featured / Trending */}
-      <section className="mb-10">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="inline-flex items-center gap-2 px-3 py-1.5 rounded-[6px] bg-ink-fill text-white">
-            <span className="live-dot !w-[6px] !h-[6px] !before:bg-yes" />
-            <span className="font-mono text-[9px] font-bold uppercase tracking-[.15em]">
-              Top liquidity
-            </span>
-          </span>
-        </div>
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {[0, 1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="surface h-56 shimmer relative overflow-hidden"
-              >
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/20 to-transparent animate-[shimmer_1.8s_infinite]" />
-              </div>
-            ))}
-          </div>
-        ) : trending.length === 0 ? (
-          <div className="surface p-14 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-sheet flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-ash" />
-            </div>
-            <div className="font-mono text-[12px] text-ash font-semibold">
-              No open markets yet.
-            </div>
-            <div className="text-[11px] text-ash-dim mt-1">Check back soon</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {trending.map((m, i) => (
-              <MarketCard
-                key={m.id}
-                market={m}
-                index={i}
-                onClick={() => onOpenMarket(m)}
-              />
-            ))}
-          </div>
+          </section>
         )}
-      </section>
 
-      {/* Category filters — solid CMYK blocks */}
-      <div className="flex items-center gap-2 mb-6 overflow-x-auto no-scrollbar">
-        {HOME_CATEGORIES.map((cat) => {
-          const active = category === cat;
-          const count =
-            cat === "All"
-              ? allMarkets.length
-              : allMarkets.filter((m) => m.category === cat).length;
-          const block =
-            cat === "All"
-              ? active
-                ? "bg-ink-fill text-white shadow-sm"
-                : "bg-cream border-2 border-ink text-ink hover:bg-sheet"
-              : active
-              ? `${CATEGORY_BLOCK[cat]} shadow-sm`
-              : "bg-cream border border-hairline text-ink hover:border-ink hover:bg-sheet";
-          return (
-            <button
-              key={cat}
-              onClick={() => setCategory(cat)}
-              aria-pressed={active}
-              className={`shrink-0 px-4 h-10 rounded-[4px] text-[12px] font-bold transition-all cursor-pointer snap ${block}`}
-            >
-              {cat}
-              <span
-                className={`ml-1.5 num text-[10px] ${
-                  active ? "opacity-70" : "text-ash"
-                }`}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+        {/* ── ALL MARKETS DIRECTORY ── */}
+        <section className="space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E2DFD7] dark:border-[#2A2F36] pb-4">
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+              {HOME_CATEGORIES.map((cat) => {
+                const active = category === cat;
+                const count =
+                  cat === "All"
+                    ? MARKETS.length
+                    : MARKETS.filter((m) => m.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setCategory(cat)}
+                    className={`shrink-0 px-3 h-7 rounded-[3px] font-medium text-[11px] transition-colors cursor-pointer flex items-center gap-1.5 ${
+                      active
+                        ? "bg-[#1F3A52] text-white"
+                        : "bg-white dark:bg-[#1A1D21] text-[#555D65] dark:text-[#9AA1AA] border border-[#E2DFD7] dark:border-[#2A2F36] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]"
+                    }`}
+                  >
+                    <span>{cat}</span>
+                    <span
+                      className={`text-[10px] tabular-nums font-mono ${
+                        active ? "text-white/80" : "text-[#7F8892] dark:text-[#68707B]"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-      <section className="rise" style={{ animationDelay: ".1s" }}>
-        <div className="flex items-end justify-between mb-5">
-          <div>
-            <LabelLux className="mb-1">Live Markets</LabelLux>
-            <h2 className="font-display text-[22px] font-extrabold text-ink">
-              {category === "All" ? "All markets" : `${category} markets`}
-            </h2>
-          </div>
-          <Link
-            href="/markets"
-            className="group flex items-center gap-1 font-mono text-[11px] font-bold uppercase tracking-wider text-ash hover:text-ink transition-colors"
-          >
-            View all
-            <ArrowUpRight className="w-3.5 h-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-
-        {markets.length === 0 ? (
-          <div className="surface p-14 text-center">
-            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-sheet flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-ash" />
-            </div>
-            <div className="font-mono text-[12px] text-ash font-semibold">
-              No markets in this category yet.
-            </div>
-            <div className="text-[11px] text-ash-dim mt-1">
-              Try another category
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-            {markets.slice(0, 8).map((m, i) => (
-              <MarketCard
-                key={m.id}
-                market={m}
-                index={i}
-                onClick={() => onOpenMarket(m)}
+            {/* Search */}
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#7F8892] dark:text-[#68707B]" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search markets..."
+                className="w-full h-8 pl-8 pr-3 bg-white dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] text-[12px] text-[#181A1C] dark:text-[#EAE8E3] placeholder-[#7F8892] dark:placeholder-[#68707B] focus:outline-none focus:border-[#1F3A52] dark:focus:border-[#7A9BB5] transition-colors"
               />
-            ))}
+            </div>
           </div>
-        )}
-      </section>
 
-      <Rule className="mt-14" />
-
-      {/* Intro stats strip */}
-      <section className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard
-          label="Volume"
-          value={Number(initialStats?.totalVolume ?? 0)}
-          decimals={1}
-          suffix=" SOL"
-          accent="cyan"
-        />
-        <StatCard
-          label="Liquidity"
-          value={Number(initialStats?.totalLiquidity ?? 0)}
-          decimals={1}
-          suffix=" SOL"
-          accent="magenta"
-        />
-        <StatCard
-          label="Traders"
-          value={Number(initialStats?.totalTraders ?? 0)}
-          staticValue={String(initialStats?.totalTraders ?? "—")}
-          accent="grass"
-        />
-        <StatCard
-          label="Resolved"
-          value={Number(initialStats?.settledMarkets ?? 0)}
-          staticValue={String(initialStats?.settledMarkets ?? "—")}
-          accent="yellow"
-        />
-      </section>
-
-      {/* How it works */}
-      <section className="py-14">
-        <div className="flex items-center gap-2 mb-10">
-          <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
-          <h2 className="font-display font-extrabold text-[20px] text-ink">
-            How it works
-          </h2>
-        </div>
-        <div className="grid md:grid-cols-3 gap-5">
-          {[
-            {
-              title: "Constant-Product Pricing",
-              body: "Every trade moves a CPMM curve. You see price impact before you commit — no hidden spreads, no order book to front-run.",
-              accent: "bg-cyan",
-              number: "01",
-            },
-            {
-              title: "Oracle Resolution",
-              body: "Crypto markets settle against Pyth pull feeds the moment they expire. No admin discretion, no waiting for a human to press a button.",
-              accent: "bg-magenta",
-              number: "02",
-            },
-            {
-              title: "On-Chain Payout",
-              body: "Winning shares redeem pro-rata from the treasury. Fees are capped and visible before your order lands. Your keys, your payout.",
-              accent: "bg-grass",
-              number: "03",
-            },
-          ].map(({ title, body, accent, number }, i) => (
-            <div key={i} className="step-card p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <span
-                  className={`w-8 h-8 rounded-[4px] ${accent} flex items-center justify-center font-mono text-[11px] font-bold text-white`}
-                >
-                  {number}
-                </span>
-                <h3 className="font-display font-bold text-[17px] text-ink">
-                  {title}
-                </h3>
-              </div>
-              <p className="text-[14px] text-ink-soft leading-relaxed pl-11">
-                {body}
+          {/* Cards Grid */}
+          {loading && filteredMarkets.length === 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+              {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
+                <div
+                  key={i}
+                  className="h-60 rounded-[3px] bg-white dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] animate-pulse"
+                />
+              ))}
+            </div>
+          ) : filteredMarkets.length === 0 ? (
+            <div className="p-12 text-center rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21]">
+              <Compass className="w-8 h-8 mx-auto text-[#7F8892] dark:text-[#68707B] mb-2" />
+              <h3 className="text-[15px] font-bold text-[#181A1C] dark:text-[#EAE8E3] mb-1">
+                No Markets Found
+              </h3>
+              <p className="font-mono text-[12px] text-[#7F8892] dark:text-[#68707B]">
+                {searchQuery
+                  ? `No lines match "${searchQuery}".`
+                  : "No open markets available in this category."}
               </p>
             </div>
-          ))}
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+              {filteredMarkets.map((m, i) => (
+                <MarketCard
+                  key={m.id}
+                  market={m}
+                  index={i}
+                  onClick={() => openMarket(m)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* ── PROTOCOL TECHNICAL SPECS ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-6 border-t border-[#E2DFD7] dark:border-[#2A2F36]">
+          <div className="p-4 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21]">
+            <div className="text-[12px] font-semibold text-[#1F3A52] dark:text-[#7A9BB5] mb-1 flex items-center gap-1.5 font-mono uppercase tracking-wide">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Constant-Product AMM
+            </div>
+            <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed">
+              Transparent CPMM bonding curves provide continuous liquidity and deterministic pricing. Zero hidden spreads.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21]">
+            <div className="text-[12px] font-semibold text-[#1F3A52] dark:text-[#7A9BB5] mb-1 flex items-center gap-1.5 font-mono uppercase tracking-wide">
+              <Activity className="w-3.5 h-3.5" />
+              Pyth Low-Latency Oracle
+            </div>
+            <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed">
+              Crypto price lines settle automatically against high-frequency Pyth pull feeds the second they expire.
+            </p>
+          </div>
+
+          <div className="p-4 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21]">
+            <div className="text-[12px] font-semibold text-[#1F3A52] dark:text-[#7A9BB5] mb-1 flex items-center gap-1.5 font-mono uppercase tracking-wide">
+              <Layers className="w-3.5 h-3.5" />
+              Non-Custodial Settlement
+            </div>
+            <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed">
+              Every position and LP token lives directly in your Solana wallet. Claim winnings and fee yield with instant on-chain transactions.
+            </p>
+          </div>
         </div>
-      </section>
+      </main>
     </div>
   );
 }

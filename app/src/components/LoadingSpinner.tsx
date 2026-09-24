@@ -13,9 +13,9 @@ export function LoadingSpinner({
   return (
     <div className="flex flex-col items-center justify-center space-y-3 py-12">
       <div
-        className={`${sizeClasses[size]} border-magenta border-t-transparent rounded-full animate-spin`}
+        className={`${sizeClasses[size]} border-[#1E2240] border-t-[#5B8FA8] rounded-full animate-spin`}
       />
-      {label && <p className="text-[13px] text-ash font-mono">{label}</p>}
+      {label && <p className="text-[13px] text-[#4D5180] font-mono">{label}</p>}
     </div>
   );
 }

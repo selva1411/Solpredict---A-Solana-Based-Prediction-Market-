@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getMarketList } from "@/lib/data/markets";
+import { SAMPLE_MARKETS } from "@/lib/data/sample-markets";
 import { getPlatformStats } from "@/lib/data/platform";
 import { ok, serverError } from "@/lib/api-response";
 import { apiHandler } from "@/lib/api-handler";
@@ -37,6 +38,7 @@ export const GET = apiHandler(
         stats: {
           totalMarkets: platformStats.totalMarkets,
           openMarkets: platformStats.openMarkets,
+          settledMarkets: platformStats.settledMarkets,
           totalVolume: (platformStats.totalVolume || 0).toString(),
           totalLiquidity: (platformStats.totalLiquidity || 0).toString(),
           // Real 24h volume aggregated from the trades table (never a hardcoded 0).
@@ -51,7 +53,27 @@ export const GET = apiHandler(
         },
       });
     } catch (err) {
-      return serverError(err);
+      console.warn("[Markets Cached] Error querying DB, returning fallback sample markets:", err);
+      const fallback = SAMPLE_MARKETS;
+      return ok({
+        ok: true,
+        markets: fallback,
+        stats: {
+          totalMarkets: fallback.length,
+          openMarkets: fallback.filter((m) => m.status === "open").length,
+          totalVolume: "0",
+          totalLiquidity: "0",
+          volume24h: "0",
+          totalTraders: 0,
+        },
+        pagination: {
+          total: fallback.length,
+          limit,
+          offset,
+          hasMore: false,
+        },
+        fallback: true,
+      });
     }
   },
   { cacheMaxAge: 10, cacheTags: ["markets"] }

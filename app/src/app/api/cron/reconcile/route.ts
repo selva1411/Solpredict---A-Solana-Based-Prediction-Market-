@@ -13,7 +13,7 @@ import rawIdl from "@/lib/idl/solpredict.json";
 const RPC_URL = ENV.serverRpcUrl;
 const PROGRAM_ID =
   process.env.NEXT_PUBLIC_PROGRAM_ID ??
-  "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
+  "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg";
 
 export const GET = apiHandler(async (req: NextRequest) => {
   // Runs an expensive on-chain reconciliation pass (up to 500 markets/trades

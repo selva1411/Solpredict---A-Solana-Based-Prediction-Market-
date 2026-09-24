@@ -9,54 +9,30 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { AirdropSolButton } from "@/components/AirdropSolButton";
 import { useAppState } from "@/contexts/AppContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { useSolPrice } from "@/hooks/useSolPrice";
 import { keys } from "@/lib/api/keys";
 import { signUserProof, userFetch } from "@/lib/user-client";
-import { Settings, Star, Sun, Moon } from "lucide-react";
-
-import { Logo3D } from "@/components/Logo3D";
+import { Settings, Star, Bell, Sun, Moon } from "lucide-react";
 import { MobileNav } from "@/components/MobileNav";
-import { useTheme } from "@/contexts/ThemeContext";
 
 const NAV_ITEMS = [
-  { href: "/markets", label: "Markets", block: "bg-cyan text-ink-static" },
-  { href: "/discover", label: "Discover", block: "bg-yellow text-ink-static" },
-  {
-    href: "/activity",
-    label: "Activity",
-    block: "bg-magenta text-white dark:text-ink-static",
-  },
-  { href: "/leaderboard", label: "Ranks", block: "bg-grass text-ink-static" },
+  { href: "/markets",    label: "Markets"   },
+  { href: "/portfolio",  label: "Portfolio" },
+  { href: "/proposals",  label: "Proposals" },
+  { href: "/activity",   label: "Activity"  },
+  { href: "/leaderboard",label: "Ranks"     },
 ];
 
-/** Light/Dark theme switcher. */
-function ThemeToggle() {
-  const { theme, mounted, toggleTheme } = useTheme();
-  const isDark = mounted && theme === "dark";
-  return (
-    <button
-      onClick={toggleTheme}
-      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      title={isDark ? "Light mode" : "Dark mode"}
-      className="grid place-items-center w-8 h-8 rounded-[4px] border border-hairline bg-cream text-ash hover:text-ink hover:border-ink transition-colors duration-150 cursor-pointer"
-    >
-      {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-    </button>
-  );
-}
-
-/** Live SOL price as a hard ink mono chip. */
+/** Live SOL price chip */
 function SolPrice() {
   const { solPrice, loading } = useSolPrice();
   return (
     <div
-      className="hidden lg:flex items-center gap-2 px-3 h-8 rounded-[4px] border-2 border-ink bg-cream"
+      className="hidden lg:flex items-center gap-1.5 px-2.5 h-[30px] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21]"
       title="SOL spot price"
     >
-      <span className="font-mono text-[10px] font-bold uppercase tracking-widest text-ash">
-        SOL
-      </span>
-      <span className="num font-mono text-[13px] font-bold text-ink">
+      <span className="font-mono text-[11px] font-semibold text-[#0A0B0D] dark:text-[#EAE8E3] tabular-nums">
         {loading
           ? "—"
           : `$${solPrice.toLocaleString(undefined, {
@@ -64,6 +40,49 @@ function SolPrice() {
               maximumFractionDigits: 2,
             })}`}
       </span>
+      <span className="text-[10px] text-[#3A414A] dark:text-[#9AA1AA] font-mono font-medium">SOL</span>
+    </div>
+  );
+}
+
+function ThemeSwitch() {
+  const { theme, setTheme, mounted } = useTheme();
+  const currentTheme = mounted ? theme : "light";
+
+  return (
+    <div
+      className="flex items-center rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F1EFEA] dark:bg-[#1A1D21] p-0.5"
+      role="group"
+      aria-label="Theme selector"
+    >
+      <button
+        type="button"
+        onClick={() => setTheme("light")}
+        className={`flex items-center gap-1.5 px-2 h-[26px] rounded-[2px] text-[11px] font-mono transition-colors cursor-pointer ${
+          currentTheme === "light"
+            ? "bg-white text-[#0A0B0D] shadow-xs font-semibold"
+            : "text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3]"
+        }`}
+        title="Switch to light theme"
+        aria-pressed={currentTheme === "light"}
+      >
+        <Sun className="w-3 h-3 text-[#A87228] dark:text-[#C49B55]" />
+        <span>Light</span>
+      </button>
+      <button
+        type="button"
+        onClick={() => setTheme("dark")}
+        className={`flex items-center gap-1.5 px-2 h-[26px] rounded-[2px] text-[11px] font-mono transition-colors cursor-pointer ${
+          currentTheme === "dark"
+            ? "bg-[#21252A] text-[#EAE8E3] shadow-xs font-semibold"
+            : "text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3]"
+        }`}
+        title="Switch to dark theme"
+        aria-pressed={currentTheme === "dark"}
+      >
+        <Moon className="w-3 h-3 text-[#1F3A52] dark:text-[#7A9BB5]" />
+        <span>Dark</span>
+      </button>
     </div>
   );
 }
@@ -110,22 +129,12 @@ function NotificationBell() {
     <div className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 rounded-[4px] border border-hairline bg-cream hover:bg-sheet transition-colors cursor-pointer"
+        className="relative grid place-items-center w-[30px] h-[30px] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:border-[#1F3A52] dark:hover:border-[#7A9BB5] transition-colors cursor-pointer"
         aria-label="Notifications"
       >
-        <svg
-          className="w-4 h-4 text-ink"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden
-        >
-          <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-          <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-        </svg>
+        <Bell className="w-3.5 h-3.5" />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-magenta text-white dark:text-ink-static text-[9px] font-bold flex items-center justify-center rounded">
+          <span className="absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 bg-[#B43C34] text-white text-[8px] font-bold flex items-center justify-center rounded-full">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
@@ -133,50 +142,27 @@ function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-80 dropdown-panel z-50 overflow-hidden">
-            <div className="px-4 py-3 border-b border-hairline flex items-center justify-between bg-sheet/50">
-              <span className="label-lux">Notifications</span>
-              <span className="text-[10px] text-ash num">
-                {notifications.length} total
-              </span>
+          <div className="absolute right-0 top-full mt-2 w-72 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21] shadow-lg z-50 overflow-hidden">
+            <div className="px-3.5 py-2.5 border-b border-[#E2DFD7] dark:border-[#2A2F36] flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-[#22262A] dark:text-[#9AA1AA] font-bold">Notifications</span>
+              <span className="text-[10px] text-[#3A414A] dark:text-[#68707B] font-mono">{notifications.length}</span>
             </div>
-            <div className="max-h-72 overflow-y-auto scrollbar-thin">
+            <div className="max-h-64 overflow-y-auto">
               {notifications.length === 0 ? (
-                <div className="p-8 text-center">
-                  <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-sheet flex items-center justify-center">
-                    <svg
-                      className="w-5 h-5 text-ash"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      aria-hidden
-                    >
-                      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-                      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
-                    </svg>
-                  </div>
-                  <div className="text-[13px] font-medium text-ash">
-                    No notifications yet
-                  </div>
-                  <div className="text-[11px] text-ash-dim mt-1">
-                    You&apos;ll see updates here
-                  </div>
+                <div className="px-4 py-8 text-center">
+                  <Bell className="w-5 h-5 text-[#3A414A] dark:text-[#68707B] mx-auto mb-2" />
+                  <div className="text-[12px] text-[#3A414A] dark:text-[#68707B]">No notifications</div>
                 </div>
               ) : (
-                notifications.slice(0, 20).map((n, i) => (
+                notifications.slice(0, 20).map((n) => (
                   <div
                     key={n.id}
-                    className={`px-4 py-3 border-b border-hairline/50 last:border-0 transition-colors hover:bg-sheet/40 ${
-                      !n.read
-                        ? "bg-magenta/[0.04] border-l-[3px] border-l-magenta"
-                        : ""
+                    className={`px-3.5 py-2.5 border-b border-[#E2DFD7]/60 dark:border-[#2A2F36]/60 last:border-0 transition-colors hover:bg-[#F8F7F4] dark:hover:bg-[#21252A] text-[12px] ${
+                      !n.read ? "border-l-2 border-l-[#1F3A52] dark:border-l-[#7A9BB5] pl-3" : ""
                     }`}
                   >
-                    <div className="text-[13px] text-ink font-medium leading-snug">
-                      {n.message}
-                    </div>
-                    <div className="text-[10px] text-ash mt-1 num">
+                    <div className="text-[#0A0B0D] dark:text-[#EAE8E3] leading-snug">{n.message}</div>
+                    <div className="text-[10px] text-[#3A414A] dark:text-[#68707B] mt-0.5 font-mono">
                       {new Date(n.createdAt).toLocaleString()}
                     </div>
                   </div>
@@ -202,38 +188,43 @@ export function Navigation() {
       : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <header className="fixed top-0 inset-x-0 z-50 bg-cream border-b-2 border-ink shadow-panel">
-      {/* CMYK signal bar — brand force, flat vector */}
-      <div className="h-1 w-full flex">
-        <span className="flex-1 bg-cyan" />
-        <span className="flex-1 bg-magenta" />
-        <span className="flex-1 bg-yellow" />
-        <span className="flex-1 bg-grass" />
-      </div>
-      <div className="mx-auto max-w-[1240px] flex items-center justify-between h-14 px-4 sm:px-6">
-        <div className="flex items-center gap-5">
-          <Link href="/" className="flex items-center gap-2 group shrink-0">
-            <div className="w-8 h-8 flex items-center justify-center rounded-[4px] bg-ink-fill text-white">
-              <Logo3D />
+    <header className="fixed top-0 inset-x-0 z-50 bg-[#FFFFFF]/95 dark:bg-[#131518]/95 backdrop-blur-md border-b border-[#E2DFD7] dark:border-[#2A2F36]">
+      <div className="mx-auto max-w-[1440px] flex items-center justify-between h-[52px] px-4 sm:px-6">
+        {/* Logo */}
+        <div className="flex items-center gap-7">
+          <Link href="/" className="flex items-center gap-2.5 group shrink-0">
+            {/* SP mark — understated editorial square badge */}
+            <div className="w-[28px] h-[28px] flex items-center justify-center bg-[#1F3A52] text-white rounded-[3px] border border-[#1F3A52] group-hover:bg-[#16293B] transition-colors">
+              <span className="font-mono text-[11px] font-bold leading-none tracking-tight">
+                SP
+              </span>
             </div>
-            <span className="font-display font-extrabold text-[16px] tracking-tight text-ink">
-              SOL<span className="text-magenta">PREDICT</span>
-            </span>
+            <div className="flex items-baseline gap-1.5 hidden sm:flex">
+              <span
+                className="font-bold text-[14px] tracking-tight text-[#0A0B0D] dark:text-[#EAE8E3]"
+                style={{ fontFamily: "var(--font-syne)", letterSpacing: "-0.01em" }}
+              >
+                SOLPREDICT
+              </span>
+              <span className="font-mono text-[9px] uppercase tracking-wider text-[#3A414A] dark:text-[#9AA1AA] font-semibold">
+                Exchange
+              </span>
+            </div>
           </Link>
 
-          <nav
-            className="hidden lg:flex items-center gap-0.5"
-            aria-label="Primary"
-          >
-            {NAV_ITEMS.map(({ href, label, block }) => {
+          {/* Primary nav */}
+          <nav className="hidden lg:flex items-center gap-1" aria-label="Primary">
+            {NAV_ITEMS.map(({ href, label }) => {
               const active = isActive(href);
               return (
                 <Link
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`nav-pill ${
-                    active ? `${block}` : "text-ink hover:bg-sheet"
+                  className={`px-3 py-1 rounded-[3px] text-[12px] font-medium transition-colors ${
+                    active
+                      ? "text-[#0A0B0D] dark:text-[#EAE8E3] bg-[#EAE8E3]/70 dark:bg-[#21252A] font-semibold"
+                      : "text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:bg-[#F1EFEA] dark:hover:bg-[#1A1D21]"
                   }`}
                 >
                   {label}
@@ -243,16 +234,16 @@ export function Navigation() {
             <Link
               href="/watchlist"
               aria-current={isActive("/watchlist") ? "page" : undefined}
-              className={`nav-pill inline-flex items-center gap-1 ${
+              className={`px-3 py-1 rounded-[3px] text-[12px] font-medium transition-colors inline-flex items-center gap-1.5 ${
                 isActive("/watchlist")
-                  ? "bg-cyan text-ink-static"
-                  : "text-ink hover:bg-sheet"
+                  ? "text-[#0A0B0D] dark:text-[#EAE8E3] bg-[#EAE8E3]/70 dark:bg-[#21252A] font-semibold"
+                  : "text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:bg-[#F1EFEA] dark:hover:bg-[#1A1D21]"
               }`}
             >
-              <Star className="w-3.5 h-3.5" />
-              Watchlist
+              <Star className="w-3.5 h-3.5 text-[#3A414A] dark:text-[#9AA1AA]" />
+              Watch
               {watchlistCount > 0 && (
-                <span className="ml-0.5 num font-mono text-[10px]">
+                <span className="ml-0.5 font-mono text-[10px] text-[#1F3A52] dark:text-[#7A9BB5] font-semibold">
                   {watchlistCount}
                 </span>
               )}
@@ -261,22 +252,23 @@ export function Navigation() {
               <Link
                 href="/admin"
                 aria-current={isActive("/admin") ? "page" : undefined}
-                className={`nav-pill inline-flex items-center gap-1 ${
+                className={`relative px-3 py-1 text-[12px] font-medium transition-colors inline-flex items-center gap-1 rounded-[3px] ${
                   isActive("/admin")
-                    ? "bg-ink-fill text-white"
-                    : "text-ink hover:bg-sheet"
+                    ? "text-[#0A0B0D] dark:text-[#EAE8E3] bg-[#EAE8E3]/70 dark:bg-[#21252A] font-semibold"
+                    : "text-[#22262A] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3]"
                 }`}
               >
-                <Settings className="w-3.5 h-3.5" />
+                <Settings className="w-3 h-3" />
                 Admin
               </Link>
             )}
           </nav>
         </div>
 
+        {/* Right side */}
         <div className="flex items-center gap-2">
-          <ThemeToggle />
           <SolPrice />
+          <ThemeSwitch />
           <NotificationBell />
           <AirdropSolButton />
           <ClientWalletButton />

@@ -45,7 +45,7 @@ export async function getAllMarkets(options?: {
   if (!db) return [];
 
   try {
-    const conditions = [];
+    const conditions: any[] = [];
 
     if (options?.status) {
       conditions.push(eq(marketsCache.status, options.status));
@@ -171,6 +171,7 @@ export async function createMarketInDb(data: {
   resolveTs?: Date;
   thumbnailUrl?: string;
   tags?: string[];
+  outcomes?: string[];
 }) {
   if (!db) return null;
   const countRes = await db
@@ -196,6 +197,27 @@ export async function createMarketInDb(data: {
       tags: data.tags,
     })
     .returning();
+
+  try {
+    const outcomeLabels =
+      data.outcomes && data.outcomes.length >= 2
+        ? data.outcomes
+        : ["YES", "NO"];
+
+    for (let i = 0; i < outcomeLabels.length; i++) {
+      await db
+        .insert(marketOutcomes)
+        .values({
+          marketPubkey: pubkey,
+          outcomeIndex: i,
+          label: (outcomeLabels[i] || (i === 0 ? "YES" : "NO")).trim(),
+          lastPriceBps: 5000,
+        })
+        .onConflictDoNothing();
+    }
+  } catch (err) {
+    logger.warn("Failed to insert market outcomes:", err);
+  }
 
   return inserted;
 }

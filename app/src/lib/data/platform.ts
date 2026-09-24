@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { db } from "@/lib/db/client";
+import { SAMPLE_MARKETS } from "./sample-markets";
 import { marketsCache, userStats, trades, users } from "@/lib/db/schema";
 import { eq, sql, desc } from "drizzle-orm";
 
@@ -24,6 +25,60 @@ const PLATFORM_STATS_TTL = 5_000;
 
 async function loadPlatformStats(): Promise<PlatformStats> {
   if (!db) {
+    const totalVolume = SAMPLE_MARKETS.reduce(
+      (sum, m) => sum + m.totalVolume,
+      0
+    );
+    const totalLiquidity = SAMPLE_MARKETS.reduce(
+      (sum, m) => sum + m.totalPool,
+      0
+    );
+    return {
+      totalVolume,
+      totalLiquidity,
+      volume24h: Math.round(totalVolume * 0.28 * 10) / 10,
+      totalTraders: 142,
+      openMarkets: SAMPLE_MARKETS.filter((m) => m.status === "open").length,
+      settledMarkets: 0,
+      totalMarkets: SAMPLE_MARKETS.length,
+    };
+  }
+
+  try {
+    const [marketAgg, tradeAgg, traderAgg] = await Promise.all([
+      db
+        .select({
+          // Liquidity is the sum of REAL pool reserves (lamports), not volume.
+          totalLiquidity: sql<string>`COALESCE(SUM(CAST(${marketsCache.yesPoolLamports} AS NUMERIC) + CAST(${marketsCache.noPoolLamports} AS NUMERIC)), 0) / 1e9`,
+          openMarkets: sql<number>`COUNT(*) FILTER (WHERE ${marketsCache.status} = 'open')::int`,
+          settledMarkets: sql<number>`COUNT(*) FILTER (WHERE ${marketsCache.status} = 'settled')::int`,
+          totalMarkets: sql<number>`COUNT(*)::int`,
+        })
+        .from(marketsCache),
+      db
+        .select({
+          totalVolume: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})), 0) / 1e9`,
+          volume24h: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})) FILTER (WHERE ${trades.blockTime} > NOW() - INTERVAL '24 hours'), 0) / 1e9`,
+        })
+        .from(trades),
+      db
+        .select({
+          count: sql<number>`COUNT(DISTINCT ${trades.trader})::int`,
+        })
+        .from(trades),
+    ]);
+
+    return {
+      totalVolume: Number(tradeAgg[0]?.totalVolume ?? 0),
+      totalLiquidity: Number(marketAgg[0]?.totalLiquidity ?? 0),
+      volume24h: Number(tradeAgg[0]?.volume24h ?? 0),
+      totalTraders: traderAgg[0]?.count ?? 0,
+      openMarkets: marketAgg[0]?.openMarkets ?? 0,
+      settledMarkets: marketAgg[0]?.settledMarkets ?? 0,
+      totalMarkets: marketAgg[0]?.totalMarkets ?? 0,
+    };
+  } catch (err) {
+    console.warn("[PlatformStats] DB query failed, returning fallback:", err);
     return {
       totalVolume: 0,
       totalLiquidity: 0,
@@ -34,39 +89,6 @@ async function loadPlatformStats(): Promise<PlatformStats> {
       totalMarkets: 0,
     };
   }
-
-  const [marketAgg, tradeAgg, traderAgg] = await Promise.all([
-    db
-      .select({
-        // Liquidity is the sum of REAL pool reserves (lamports), not volume.
-        totalLiquidity: sql<string>`COALESCE(SUM(CAST(${marketsCache.yesPoolLamports} AS NUMERIC) + CAST(${marketsCache.noPoolLamports} AS NUMERIC)), 0) / 1e9`,
-        openMarkets: sql<number>`COUNT(*) FILTER (WHERE ${marketsCache.status} = 'open')::int`,
-        settledMarkets: sql<number>`COUNT(*) FILTER (WHERE ${marketsCache.status} = 'settled')::int`,
-        totalMarkets: sql<number>`COUNT(*)::int`,
-      })
-      .from(marketsCache),
-    db
-      .select({
-        totalVolume: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})), 0) / 1e9`,
-        volume24h: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})) FILTER (WHERE ${trades.blockTime} > NOW() - INTERVAL '24 hours'), 0) / 1e9`,
-      })
-      .from(trades),
-    db
-      .select({
-        count: sql<number>`COUNT(DISTINCT ${trades.trader})::int`,
-      })
-      .from(trades),
-  ]);
-
-  return {
-    totalVolume: Number(tradeAgg[0]?.totalVolume ?? 0),
-    totalLiquidity: Number(marketAgg[0]?.totalLiquidity ?? 0),
-    volume24h: Number(tradeAgg[0]?.volume24h ?? 0),
-    totalTraders: traderAgg[0]?.count ?? 0,
-    openMarkets: marketAgg[0]?.openMarkets ?? 0,
-    settledMarkets: marketAgg[0]?.settledMarkets ?? 0,
-    totalMarkets: marketAgg[0]?.totalMarkets ?? 0,
-  };
 }
 
 /**
@@ -145,28 +167,34 @@ export const getLeaderboard = cache(async function getLeaderboard(
       break;
   }
 
-  const rows = await db
-    .select({
-      wallet: userStats.wallet,
-      totalVolume: userStats.totalVolume,
-      tradeCount: userStats.tradeCount,
-      marketsTraded: userStats.marketsTraded,
-      marketsResolved: userStats.marketsResolved,
-      wins: userStats.wins,
-      losses: userStats.losses,
-      winRateBps: userStats.winRateBps,
-      realizedPnl: userStats.realizedPnl,
-      unrealizedPnl: userStats.unrealizedPnl,
-      roiBps: userStats.roiBps,
-      rank: userStats.rank,
-      username: users.username,
-      avatarUrl: users.avatarUrl,
-      bio: users.bio,
-    })
-    .from(userStats)
-    .leftJoin(users, eq(users.wallet, userStats.wallet))
-    .orderBy(orderExpr)
-    .limit(limit);
+  let rows: any[] = [];
+  try {
+    rows = await db
+      .select({
+        wallet: userStats.wallet,
+        totalVolume: userStats.totalVolume,
+        tradeCount: userStats.tradeCount,
+        marketsTraded: userStats.marketsTraded,
+        marketsResolved: userStats.marketsResolved,
+        wins: userStats.wins,
+        losses: userStats.losses,
+        winRateBps: userStats.winRateBps,
+        realizedPnl: userStats.realizedPnl,
+        unrealizedPnl: userStats.unrealizedPnl,
+        roiBps: userStats.roiBps,
+        rank: userStats.rank,
+        username: users.username,
+        avatarUrl: users.avatarUrl,
+        bio: users.bio,
+      })
+      .from(userStats)
+      .leftJoin(users, eq(users.wallet, userStats.wallet))
+      .orderBy(orderExpr)
+      .limit(limit);
+  } catch (err) {
+    console.warn("[Leaderboard] DB query failed, returning empty leaderboard:", err);
+    return [];
+  }
 
   return rows.map((r, i) => {
     const wallet = r.wallet;

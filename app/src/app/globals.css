@@ -1,172 +1,235 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ════════════════════════════════════════════════════════════════
-   SOLPREDICT — "STUDIO SIGNAL / CMYK BLOCKBOOK"
-   A prediction market that reads like a modular studio identity system:
-   decisions snap together as saturated CMYK blocks over a cool neutral
-   ground. The category and the confidence are loud colour; the price is
-   type. No dark terminal, no neon-on-ink. Flat vector fills against
-   photographic grey-scale depth. Single Dutch grotesque (Archivo) set
-   tight and businesslike. Colour is a field that owns whole regions,
-   never an accent scattered over a neutral ground.
-   Signature: .block (hard saturated panel), .bar-gap (CMYK hairline
-   gap rule), .snap (press-flat interaction).
+   SOLPREDICT — MODERN EDITORIAL FINANCIAL EXCHANGE
+   Quiet, authoritative financial design:
+   Light mode default: Soft ivory paper ground (#F8F7F4), crisp white cards (#FFFFFF),
+   deep charcoal ink typography (#181A1C), muted graphite rules (#E2DFD7),
+   single restrained cobalt/navy accent (#1F3A52), calm forest green YES (#1D7C59),
+   calm brick/rust red NO (#B43C34).
+   Dark mode: Warm charcoal ground (#131518), muted graphite (#2A2F36), calm sage & brick.
+   Zero neon glows, zero radial spotlights, zero crypto-default amber/cyan.
    ════════════════════════════════════════════════════════════════ */
 
 @theme {
-  /* ground — cool neutral, photographic paper & machine grey */
-  --color-ground: #eef0f3;
-  --color-ground-2: #e4e7ec;
-  --color-cream: #ffffff;
-  --color-sheet: #f7f8fa;
-  --color-hairline: #d7dbe1;
-  --color-hairline-2: #c3c9d2;
+  /* ── Canvas / Ground ── */
+  --color-ground:    #F8F7F4;
+  --color-ground-2:  #F1EFEA;
+  --color-surface:   #FFFFFF;
+  --color-surface-2: #F1EFEA;
+  --color-surface-3: #E9E6DF;
 
-  /* ink — near-black warm procedure grey, not pure */
-  --color-ink: #16181d;
-  --color-ink-soft: #3a3f47;
-  /* solid fill for buttons/pills — stays dark in BOTH modes so white text on
-     it never inverts into white-on-white when ink flips for dark mode */
-  --color-ink-fill: #16181d;
-  --color-ink-fill-soft: #2b2f36;
-  /* fixed near-black text for ON bright saturated fills (cyan/grass/yellow/
-     magenta chips) — stays dark in both modes so it never becomes white-on-
-     bright when --color-ink flips for dark mode */
-  --color-ink-static: #14161a;
-  --color-ash: #5b6470;
-  --color-ash-dim: #87909c;
+  /* ── Architectural Rules & Borders ── */
+  --color-border:    #E2DFD7;
+  --color-border-2:  #C8C4B8;
+  --color-border-3:  #ADA89B;
 
-  /* primaries — the only force in the system.
-     Depeneded for text legibility on light ground while fills stay vivid:
-     these are used as both fills (vivid) and text (must hit AA on white),
-     so the text-facing primaries sit several steps darker. */
-  --color-cyan: #0892b0;
-  --color-magenta: #c2186e;
-  --color-yellow: #ffe600;
-  --color-grass: #2f9e15;
-  --color-inkblue: #0b3ea8;
+  /* ── Text Scale — high-contrast deep charcoal & obsidian ink ── */
+  --color-text:      #0A0B0D;
+  --color-text-soft: #1E2227;
+  --color-text-muted:#3A414A;
+  --color-text-dim:  #555C66;
 
-  /* outcomes — YES = grass (lit), NO = magenta (opposing).
-     Distinguishability rides on label + solid-vs-outline, never colour
-     alone. Text primaries aligned with grass/magenta so YES/NO pills and
-     labels share one hue. */
-  --color-yes: #2f9e15;
-  --color-no: #c2186e;
-  --color-yes-fill: #2fb512;
-  --color-no-fill: #f6178f;
-  --color-amber: #ffb400;
+  /* ── Brand Primary — single restrained technical navy ── */
+  --color-primary:     #1F3A52;
+  --color-primary-dim: #162B3D;
+  --color-primary-glow:rgba(31, 58, 82, 0.08);
+  --color-primary-bg:  #F1EFEA;
 
-  /* light / legacy semantic maps (kept so every component compiles) */
-  --color-white: #ffffff;
-  --color-black: #000000;
-  --color-gold: #0b3ea8; /* primary/action — inkblue, not gold */
-  --color-gold-lite: #3a6fff;
-  --color-gold-deep: #0a2f78;
-  --color-ivory: #16181d; /* primary text is ink */
-  --color-verdigris: #52d017; /* YES */
-  --color-bordeaux: #f6178f; /* NO */
-  --color-violet: #6b4fd8; /* tech/category */
-  --color-obsidian: #ffffff;
-  --color-panel: #ffffff;
-  --color-panel-2: #f2f4f7;
-  --color-void: #eef0f3;
-  --color-champagne: #eef0f3;
-  --color-champagne-dim: #6b7280;
-  --color-iris: #a3a9b2;
-  --color-graphite: #4b5058;
-  --color-cream-tr: transparent;
-  --color-ink-tr: transparent;
+  /* ── Financial YES — calm desaturated forest green ── */
+  --color-yes:       #1D7C59;
+  --color-yes-dim:   #155C42;
+  --color-yes-bg:    #EDF6F1;
+  --color-yes-text:  #145C42;
 
-  /* type */
-  --font-display: var(--font-archivo, "Archivo"), "Helvetica Neue", sans-serif;
-  --font-sans: var(--font-archivo, "Archivo"), "Helvetica Neue", sans-serif;
-  --font-mono: var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace,
-    monospace;
+  /* ── Financial NO — calm desaturated brick/rust red ── */
+  --color-no:        #B43C34;
+  --color-no-dim:    #8E2F29;
+  --color-no-bg:     #FBF1F0;
+  --color-no-text:   #8E2F29;
 
-  /* geometry — hard corners, a stencil-print flatness */
-  --radius-data: 4px;
-  --radius-panel: 8px;
+  /* ── Signal / Warning ── */
+  --color-signal:    #B26A20;
+  --color-signal-bg: #FDF6EE;
 
-  /* elevation — print-flat, near-none; depth is layering, not shadow */
-  --shadow-flat: none;
-  --shadow-panel: 0 1px 2px rgba(22, 24, 29, 0.06);
-  --shadow-lift: 0 2px 8px rgba(22, 24, 29, 0.1);
-  --shadow-signal: 0 0 0 3px
-    color-mix(in srgb, var(--color-ink) 12%, transparent);
+  /* ── Category semantics (neutralized, calm) ── */
+  --color-crypto:    #1F3A52;
+  --color-sports:    #1D7C59;
+  --color-politics:  #B43C34;
+  --color-tech:      #335C7D;
+  --color-other:     #1E2227;
 
-  --ease-lux: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  /* ── Legacy maps — compatible aliases for existing components ── */
+  --color-ink:          #0A0B0D;
+  --color-ink-soft:     #1E2227;
+  --color-ink-fill:     #1F3A52;
+  --color-ink-fill-soft:#2C4E6D;
+  --color-ink-static:   #0A0B0D;
+  --color-ash:          #1E2227;
+  --color-ash-dim:      #3A414A;
+  --color-cream:        #FFFFFF;
+  --color-sheet:        #F1EFEA;
+  --color-hairline:     #E2DFD7;
+  --color-hairline-2:   #C8C4B8;
+  --color-cyan:         #335C7D;
+  --color-magenta:      #B43C34;
+  --color-yellow:       #B26A20;
+  --color-grass:        #1D7C59;
+  --color-inkblue:      #1F3A52;
+  --color-amber:        #B26A20;
+  --color-yes-fill:     #1D7C59;
+  --color-no-fill:      #B43C34;
+  --color-verdigris:    #1D7C59;
+  --color-bordeaux:     #B43C34;
+  --color-white:        #ffffff;
+  --color-black:        #000000;
+  --color-gold:         #8F6B20;
+  --color-gold-lite:    #BA933E;
+  --color-gold-deep:    #694D12;
+  --color-ivory:        #F8F7F4;
+  --color-obsidian:     #0A0B0D;
+  --color-panel:        #FFFFFF;
+  --color-panel-2:      #F1EFEA;
+  --color-void:         #F8F7F4;
+  --color-champagne:    #F1EFEA;
+  --color-champagne-dim:#3A414A;
+  --color-iris:         #1E2227;
+  --color-graphite:     #3A414A;
+  --color-violet:       #1F3A52;
+  --color-cream-tr:     transparent;
+  --color-ink-tr:       transparent;
+  --color-electric:     #1F3A52;
 
-  --animate-pulse-slow: pulseSlow 3s ease-in-out infinite;
-  --animate-spin-slow: spin 14s linear infinite;
+  /* ── Type ── */
+  --font-display: var(--font-syne, "Syne"), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-sans:    var(--font-inter, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    var(--font-jetbrains-mono, "JetBrains Mono"), ui-monospace, monospace;
+  --font-space-grotesk: var(--font-inter, "Inter"), sans-serif;
+  --font-ibm-plex: var(--font-inter, "Inter"), sans-serif;
+  --font-archivo: var(--font-inter, "Inter"), sans-serif;
+
+  /* ── Geometry — subtle architectural precision ── */
+  --radius-data:  3px;
+  --radius-panel: 4px;
+  --radius-pill:  4px;
+
+  /* ── Subtle flat financial elevations ── */
+  --shadow-flat:   none;
+  --shadow-panel:  0 1px 2px rgba(0,0,0,0.04);
+  --shadow-lift:   0 2px 8px rgba(0,0,0,0.06);
+  --shadow-signal: 0 0 0 1px #E2DFD7;
+  --shadow-glow:   none;
+
+  --ease-lux:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* ── DARK MODE ─────────────────────────────────────────────────────
-   App-wide theme, toggled by adding `.dark` to <html>. The saturated
-   CMYK primaries are identical in both modes (they read fine on ink);
-   only the neutral ground/ink/type scale is inverted. Because every
-   component colors from var(--color-*), overriding the tokens here
-   flips the whole app at once. */
+:root {
+  --background:            #F8F7F4;
+  --foreground:            #0A0B0D;
+  --card:                  #FFFFFF;
+  --card-foreground:       #0A0B0D;
+  --popover:               #FFFFFF;
+  --popover-foreground:    #0A0B0D;
+  --primary:               #1F3A52;
+  --primary-foreground:    #ffffff;
+  --secondary:             #F1EFEA;
+  --secondary-foreground:  #0A0B0D;
+  --muted:                 #F1EFEA;
+  --muted-foreground:      #3A414A;
+  --accent:                #E9E6DF;
+  --accent-foreground:     #0A0B0D;
+  --destructive:           #B43C34;
+  --destructive-foreground:#ffffff;
+  --border:                #E2DFD7;
+  --input:                 #E2DFD7;
+  --ring:                  #1F3A52;
+  --radius:                4px;
+}
+
+html {
+  background-color: var(--color-ground, #F8F7F4);
+  color: var(--color-text, #0A0B0D);
+  background-image: none;
+}
+
 .dark {
-  /* Neuterals — a cooler, deeper ground with a clear elevation ladder so
-     panels separate instead of blending: ground (page) < sheet (inset/well)
-     < cream (raised panel). cream must be LIGHTER than sheet here so elevated
-     blocks read as raised card on the dark page. */
-  --color-ground: #0e0f12;
-  --color-ground-2: #14161a;
-  --color-cream: #1e2126;
-  --color-sheet: #171a1f;
-  --color-hairline: #2d3138;
-  --color-hairline-2: #3d424b;
+  --color-ground:    #131518;
+  --color-ground-2:  #181B1F;
+  --color-surface:   #1A1D21;
+  --color-surface-2: #21252A;
+  --color-surface-3: #282D33;
 
-  /* ink — near-white warm grey; ash lifted for readable secondary text */
-  --color-ink: #eef0f3;
-  --color-ink-soft: #c3c9d1;
-  /* solid button/pill fill — stays a dark neutral in dark mode so white text
-     keeps contrast even though --color-ink itself flips to near-white */
-  --color-ink-fill: #191c21;
-  --color-ink-fill-soft: #262b32;
-  --color-ink-static: #14161a;
-  --color-ash: #adb4bf;
-  --color-ash-dim: #9aa3af;
+  --color-border:    #2A2F36;
+  --color-border-2:  #39404A;
+  --color-border-3:  #49525E;
 
-  /* primaries — dark-tuned: hues held but desaturated + lifted with colour
-     so saturated blocks read luminous-not-blinding on the dark ground */
-  --color-cyan: #35d6f0;
-  --color-magenta: #ff5aa8;
-  --color-yellow: #ffe94d;
-  --color-grass: #6ee04a;
-  --color-inkblue: #5d8cff;
+  --color-text:      #EAE8E3;
+  --color-text-soft: #9AA1AA;
+  --color-text-muted:#68707B;
+  --color-text-dim:  #4C535C;
 
-  /* outcomes — softened for dark so YES/NO fills don't bloom at full sat */
-  --color-yes: #54d62c;
-  --color-no: #ff5aa8;
-  /* outcome FILLS — deeper versions so light text stays readable on the
-     solid YES/NO pills in dark (bright yes/no is reserved for text) */
-  --color-yes-fill: #2f9e15;
-  --color-no-fill: #c2186e;
-  --color-amber: #ffc24d;
+  --color-primary:     #6D97B0;
+  --color-primary-dim: #4F768C;
+  --color-primary-glow:none;
+  --color-primary-bg:  #18232C;
 
-  /* legacy semantic maps — keep in line with the dark ground */
-  --color-obsidian: #14161a;
-  --color-panel: #1e2126;
-  --color-panel-2: #24282e;
-  --color-void: #14161a;
-  --color-champagne: #14161a;
-  --color-champagne-dim: #a2a9b3;
-  --color-ivory: #eef0f3;
-  --color-iris: #7d848e;
-  --color-graphite: #c3c9d1;
+  --color-yes:       #2E996E;
+  --color-yes-dim:   #237856;
+  --color-yes-bg:    rgba(46, 153, 110, 0.10);
+  --color-yes-text:  #43B385;
 
-  /* elevation — soft, diffuse dark shadows so raised cards separate from
-     the flat ground without harsh hard edges */
-  --shadow-flat: none;
-  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.5),
-    0 1px 0 rgba(255, 255, 255, 0.02) inset;
-  --shadow-lift: 0 4px 18px rgba(0, 0, 0, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.03) inset;
-  --shadow-signal: 0 0 0 3px
-    color-mix(in srgb, var(--color-ink) 16%, transparent);
+  --color-no:        #CC4D45;
+  --color-no-dim:    #A33B34;
+  --color-no-bg:     rgba(204, 77, 69, 0.10);
+  --color-no-text:   #E26860;
+
+  --color-ink:          #EAE8E3;
+  --color-ink-soft:     #9AA1AA;
+  --color-ink-fill:     #6D97B0;
+  --color-ink-fill-soft:#4F768C;
+  --color-ink-static:   #EAE8E3;
+  --color-ash:          #9AA1AA;
+  --color-ash-dim:      #68707B;
+  --color-cream:        #1A1D21;
+  --color-sheet:        #21252A;
+  --color-hairline:     #2A2F36;
+  --color-hairline-2:   #39404A;
+  --color-cyan:         #6D97B0;
+  --color-magenta:      #CC4D45;
+  --color-yellow:       #B26A20;
+  --color-grass:        #2E996E;
+  --color-inkblue:      #6D97B0;
+  --color-amber:        #B26A20;
+  --color-yes-fill:     #2E996E;
+  --color-no-fill:      #CC4D45;
+  --color-verdigris:    #2E996E;
+  --color-bordeaux:     #CC4D45;
+  --color-panel:        #1A1D21;
+  --color-panel-2:      #21252A;
+  --color-void:         #131518;
+
+  --background:            #131518;
+  --foreground:            #EAE8E3;
+  --card:                  #1A1D21;
+  --card-foreground:       #EAE8E3;
+  --popover:               #1A1D21;
+  --popover-foreground:    #EAE8E3;
+  --primary:               #6D97B0;
+  --primary-foreground:    #131518;
+  --secondary:             #21252A;
+  --secondary-foreground:  #EAE8E3;
+  --muted:                 #21252A;
+  --muted-foreground:      #68707B;
+  --accent:                #282D33;
+  --accent-foreground:     #EAE8E3;
+  --destructive:           #CC4D45;
+  --destructive-foreground:#ffffff;
+  --border:                #2A2F36;
+  --input:                 #2A2F36;
+  --ring:                  #6D97B0;
 }
 
 @layer base {
@@ -175,154 +238,128 @@
     text-rendering: optimizeLegibility;
   }
   body {
-    background-color: var(--color-ground);
-    background-image: radial-gradient(
-      120% 60% at 50% -10%,
-      color-mix(in srgb, var(--color-cream) 60%, transparent),
-      transparent 60%
-    );
-    color: var(--color-ink);
+    background-color: var(--color-ground, #F8F7F4);
+    color: var(--color-text, #0A0B0D);
     font-family: var(--font-sans);
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.5;
   }
-  body::before {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0.025;
-    background-image: repeating-linear-gradient(
-        0deg,
-        transparent,
-        transparent 3px,
-        var(--color-hairline) 3px,
-        var(--color-hairline) 4px
-      ),
-      repeating-linear-gradient(
-        90deg,
-        transparent,
-        transparent 3px,
-        var(--color-hairline) 3px,
-        var(--color-hairline) 4px
-      );
-    background-size: 4px 4px;
-  }
   ::selection {
-    background: var(--color-yellow);
-    color: var(--color-ink);
+    background: rgba(31, 58, 82, 0.12);
+    color: var(--color-primary, #1F3A52);
   }
-
-  :where(
-      a,
-      button,
-      input,
-      select,
-      textarea,
-      summary,
-      [role="button"],
-      [tabindex]
-    ):focus-visible {
-    outline: 3px solid var(--color-ink);
+  :where(a, button, input, select, textarea, summary,
+    [role="button"], [tabindex]):focus-visible {
+    outline: 2px solid var(--color-primary, #1F3A52);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: 4px;
   }
-
   :is(input, textarea, [contenteditable]) {
-    caret-color: var(--color-magenta);
+    caret-color: var(--color-primary, #1F3A52);
   }
-
-  h1,
-  h2,
-  h3 {
+  h1, h2, h3 {
     font-family: var(--font-display);
     font-weight: 700;
     line-height: 1.05;
     letter-spacing: -0.02em;
+    color: var(--color-text, #0A0B0D);
   }
 }
 
-/* ---------- utilities ---------- */
+/* ══════════════════════════════════════════════════════════
+   UTILITIES
+   ══════════════════════════════════════════════════════════ */
 
 @utility label-lux {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-ash);
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted, #7F8892);
 }
 
 @utility eyebrow {
-  font-family: var(--font-mono);
-  font-size: 10px;
+  font-family: var(--font-sans);
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-ash);
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted, #7F8892);
 }
 
 @utility rule-gold {
   height: 1px;
   background: linear-gradient(
     90deg,
-    var(--color-ink) 0,
-    var(--color-hairline) 40%,
+    var(--color-primary, #1F3A52) 0,
+    var(--color-border-2, #C8C4B8) 35%,
     transparent
   );
 }
 
-/* the signature hard saturated block — colour as a region that owns space */
-@utility block {
-  border-radius: var(--radius-data);
-  box-shadow: var(--shadow-panel);
-  border: 1px solid color-mix(in srgb, currentColor 34%, #16181d);
+@utility rule-primary {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--color-primary, #1F3A52) 0,
+    var(--color-border-2, #C8C4B8) 35%,
+    transparent
+  );
 }
 
-/* the CMYK hairline gap rule between colour fields */
-@utility bar-gap {
+/* Thin horizontal separator */
+@utility rule-thin {
   height: 1px;
-  background: var(--color-hairline);
+  background: var(--color-border, #E2DFD7);
 }
 
 @utility surface {
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-data);
-  box-shadow: var(--shadow-panel);
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
 }
 
 @utility surface-feature {
   position: relative;
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel);
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
+}
+
+@utility block {
+  border-radius: var(--radius-data, 3px);
+  border: 1px solid var(--color-border, #E2DFD7);
+}
+
+@utility bar-gap {
+  height: 1px;
+  background: var(--color-border, #E2DFD7);
 }
 
 @utility paper {
-  background: var(--color-cream);
-  color: var(--color-ink);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-panel);
+  background: var(--color-surface, #FFFFFF);
+  color: var(--color-text, #181A1C);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
 }
 
 @utility panel-lux {
   position: relative;
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel);
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
+}
+
+/* Active panel */
+@utility panel-active {
+  border-color: var(--color-primary, #1F3A52);
+  box-shadow: 0 0 0 1px var(--color-primary, #1F3A52);
 }
 
 @utility lift {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease,
-    transform 0.15s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
   &:hover {
-    border-color: var(--color-ink);
-    box-shadow: var(--shadow-lift);
-    transform: translateY(-1px);
+    border-color: var(--color-border-2, #C8C4B8);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   }
 }
 
@@ -334,7 +371,7 @@
 
 @utility display-xl {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 0.98;
   font-size: clamp(2.25rem, 5vw, 4rem);
@@ -343,24 +380,23 @@
 @utility focus-lux {
   &:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px var(--color-ink);
+    box-shadow: 0 0 0 2px var(--color-primary, #1F3A52);
   }
 }
 
 @utility edge-glow {
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
   &:hover {
-    border-color: var(--color-ink);
-    box-shadow: var(--shadow-lift);
+    border-color: var(--color-primary, #1F3A52);
+    box-shadow: 0 0 0 1px var(--color-primary, #1F3A52);
   }
 }
 
-/* ── Board utilities ────── */
+/* ── Board / Live Lines utilities ──────────────────────── */
 
 @utility board {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 @utility board-row {
@@ -368,91 +404,256 @@
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 1rem;
-  padding: 0.85rem 1rem;
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-data);
-  box-shadow: var(--shadow-panel);
-  transition: border-color 0.15s ease, background 0.15s ease,
-    transform 0.15s ease;
+  padding: 0.75rem 1rem;
+  background: var(--color-surface, #FFFFFF);
+  border-bottom: 1px solid var(--color-border, #E2DFD7);
+  transition: background 0.1s ease;
   position: relative;
-}
-@utility board-row-reorder {
-  transition: transform 0.3s ease, border-color 0.15s ease,
-    background 0.15s ease;
+  &:hover {
+    background: var(--color-surface-2, #F1EFEA);
+  }
 }
 
+@utility board-row-reorder {
+  transition: transform 0.3s ease, background 0.1s ease;
+}
+
+/* ── Market row — technical navy left-rail on hover ── */
+@utility market-row {
+  display: grid;
+  grid-template-columns: 28px 72px 1fr auto auto auto auto;
+  align-items: center;
+  gap: 0;
+  padding: 0 1rem;
+  height: 48px;
+  border-bottom: 1px solid var(--color-border, #E2DFD7);
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: background 0.08s ease, border-left-color 0.15s ease;
+  position: relative;
+  &:hover {
+    background: var(--color-surface-2, #F1EFEA);
+    border-left-color: var(--color-primary, #1F3A52);
+  }
+  &:hover .market-row-question {
+    color: var(--color-primary, #1F3A52);
+  }
+}
+
+@utility market-row-compact {
+  display: grid;
+  grid-template-columns: 28px 64px 1fr auto auto auto;
+  align-items: center;
+  gap: 0;
+  padding: 0 0.75rem;
+  height: 44px;
+  border-bottom: 1px solid var(--color-border, #E2DFD7);
+  cursor: pointer;
+  transition: background 0.08s ease;
+  &:hover {
+    background: var(--color-surface-2, #F1EFEA);
+  }
+}
+
+/* ── Odds display — the primary data element ── */
 @utility odds {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 1.35rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  color: var(--color-ink);
+  color: var(--color-text, #181A1C);
 }
 @utility odds-sm {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 700;
   font-size: 1rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
-  color: var(--color-ink);
+  color: var(--color-text, #181A1C);
+}
+@utility odds-lg {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 2.5rem;
+  line-height: 0.95;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+  color: var(--color-text, #181A1C);
 }
 
+/* Price direction flash */
 @utility odds-flash-up {
-  animation: oddsFlashUp 0.4s ease-out;
+  animation: oddsFlashUp 0.5s ease-out;
 }
 @utility odds-flash-down {
-  animation: oddsFlashDown 0.4s ease-out;
+  animation: oddsFlashDown 0.5s ease-out;
 }
 @keyframes oddsFlashUp {
-  0% {
-    color: var(--color-yes);
-    background: color-mix(in srgb, var(--color-yes) 16%, transparent);
-  }
-  100% {
-    color: var(--color-ink);
-    background: transparent;
-  }
+  0%   { color: var(--color-yes, #1D7C59); }
+  100% { color: var(--color-text, #181A1C); }
 }
 @keyframes oddsFlashDown {
-  0% {
-    color: var(--color-no);
-    background: color-mix(in srgb, var(--color-no) 16%, transparent);
-  }
-  100% {
-    color: var(--color-ink);
-    background: transparent;
-  }
+  0%   { color: var(--color-no, #B43C34); }
+  100% { color: var(--color-text, #181A1C); }
 }
 
+/* ── Inline price badges — forest YES, brick NO ── */
 @utility line {
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  color: var(--color-ink);
+  color: var(--color-text, #181A1C);
 }
 @utility line-yes {
-  color: var(--color-ink);
-  padding: 0.1em 0.45em;
-  background: var(--color-yes);
-  color: #08240a;
+  padding: 0.1em 0.55em;
+  background: var(--color-yes-bg, #EDF6F1);
+  color: var(--color-yes-text, #145C42);
+  border: 1px solid rgba(29, 124, 89, 0.25);
   border-radius: 3px;
-  font-weight: 800;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 @utility line-no {
-  color: var(--color-ink);
-  border: 2px solid var(--color-no);
+  padding: 0.1em 0.55em;
+  background: var(--color-no-bg, #FBF1F0);
+  color: var(--color-no-text, #8E2F29);
+  border: 1px solid rgba(180, 60, 52, 0.25);
   border-radius: 3px;
-  padding: 0.05em 0.4em;
-  font-weight: 800;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
+/* ── Category pills ── */
+@utility cat-crypto  { background: #F1EFEA; color: #1F3A52; border: 1px solid #E2DFD7; }
+@utility cat-sports  { background: #EDF6F1; color: #145C42; border: 1px solid #C4E2D3; }
+@utility cat-politics{ background: #FBF1F0; color: #8E2F29; border: 1px solid #F1CEC9; }
+@utility cat-tech    { background: #EFF4F8; color: #234E70; border: 1px solid #D0DFEB; }
+@utility cat-other   { background: #F1EFEA; color: #555D65; border: 1px solid #E2DFD7; }
+
+/* ── Price cells ── */
+@utility price-yes {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-yes-text, #145C42);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+@utility price-no {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--color-no-text, #8E2F29);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ── Data display utilities ── */
+@utility data-cell {
+  background: var(--color-surface-2, #F1EFEA);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: 3px;
+  padding: 0.4rem 0.6rem;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text, #181A1C);
+}
+
+@utility hero-stat {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.6rem 0.875rem;
+  border-radius: 3px;
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+}
+
+/* ── Plasma arc probability — the signature element ── */
+@utility plasma-arc {
+  height: 3px;
+  border-radius: 100px;
+  background: linear-gradient(
+    to right,
+    var(--color-prob-lo),
+    var(--color-prob-mid),
+    var(--color-prob-hi)
+  );
+  position: relative;
+  overflow: visible;
+}
+
+@utility plasma-cursor {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.3), 0 0 12px rgba(91,143,168,0.6);
+}
+
+/* ── Probability bar ── */
+@utility probability-bar {
+  height: 2px;
+  overflow: hidden;
+  background: rgba(224,64,251,0.3);
+}
+@utility probability-fill {
+  height: 100%;
+  background: linear-gradient(to right, #00E5CC, #5B8FA8);
+  transition: width 0.5s var(--ease-lux);
+}
+
+/* ── Animations ── */
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+@utility rise {
+  animation: riseIn 0.3s ease-out both;
+}
+
+@keyframes tick {
+  0%   { transform: translateY(-20%); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@utility tick {
+  animation: tick 0.18s ease-out both;
+}
+
+/* ── Live indicator dot — teal pulse ── */
+@utility live-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: #00E5CC;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 9999px;
+    background: rgba(0, 229, 204, 0.25);
+    animation: livePing 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+@keyframes livePing {
+  0%      { transform: scale(0.5); opacity: 1; }
+  80%,100%{ transform: scale(2.2); opacity: 0; }
+}
+
+/* ── Text utilities ── */
+@utility text-signal { color: var(--color-primary, #5B8FA8); }
+
+/* Violet sheen on hover */
 @utility sheen {
   position: relative;
   overflow: hidden;
@@ -460,14 +661,9 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      105deg,
-      transparent 40%,
-      rgba(255, 255, 255, 0.55) 50%,
-      transparent 60%
-    );
+    background: linear-gradient(105deg, transparent 40%, rgba(91,143,168,0.06) 50%, transparent 60%);
     transform: translateX(-120%);
-    transition: transform 0.6s ease;
+    transition: transform 0.5s ease;
     pointer-events: none;
   }
   &:hover::after {
@@ -475,254 +671,187 @@
   }
 }
 
-@utility tnum {
-  font-variant-numeric: tabular-nums;
-}
-
-@keyframes riseIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-@utility rise {
-  animation: riseIn 0.4s ease-out both;
-}
-
-@keyframes tick {
-  0% {
-    transform: translateY(-30%);
-    opacity: 0;
-  }
-  100% {
-    transform: none;
-    opacity: 1;
-  }
-}
-@utility tick {
-  animation: tick 0.2s ease-out both;
-}
-
-@utility live-dot {
-  position: relative;
-  width: 9px;
-  height: 9px;
-  border-radius: 9999px;
-  background: var(--color-yes);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-yes) 30%, transparent);
-  &::before {
-    content: "";
-    position: absolute;
-    inset: -4px;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--color-yes) 30%, transparent);
-    animation: livePing 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
-  }
-}
-@keyframes livePing {
-  0% {
-    transform: scale(0.6);
-    opacity: 1;
-  }
-  80%,
-  100% {
-    transform: scale(2.1);
-    opacity: 0;
-  }
-}
-
-@utility text-signal {
-  color: var(--color-inkblue);
-}
-
-@utility ribbon {
-  width: 100%;
-  background: var(--color-cream);
-  border-top: 1px solid var(--color-hairline);
-  border-bottom: 1px solid var(--color-hairline);
-}
-
-@utility data-cell {
-  background: var(--color-sheet);
-  border: 1px solid var(--color-hairline);
-  border-radius: 4px;
-  padding: 0.5rem 0.75rem;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-@utility price-yes {
-  font-family: var(--font-display);
-  font-weight: 800;
-  color: var(--color-ink);
-  background: var(--color-yes);
-  padding: 0.06em 0.4em;
-  border-radius: 3px;
-  display: inline-block;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  color: #08240a;
-}
-
-@utility price-no {
-  font-family: var(--font-display);
-  font-weight: 800;
-  color: var(--color-ink);
-  border: 2px solid var(--color-no);
-  padding: 0.04em 0.38em;
-  border-radius: 3px;
-  display: inline-block;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-}
-
-@utility hero-stat {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  box-shadow: var(--shadow-panel);
-}
+@utility tnum { font-variant-numeric: tabular-nums; }
 
 @utility dot {
   display: inline-block;
-  width: 0.55em;
-  height: 0.55em;
+  width: 0.5em;
+  height: 0.5em;
   border-radius: 9999px;
 }
 
-/* the press-flat snap interaction — Dumbar's flat vector snap */
 @utility snap {
-  transition: transform 0.12s var(--ease-lux);
-  &:active {
-    transform: scale(0.97);
+  transition: opacity 0.1s ease, transform 0.1s var(--ease-lux);
+  &:active { transform: scale(0.97); opacity: 0.85; }
+}
+
+/* ── Board table header ── */
+@utility board-header {
+  display: grid;
+  padding: 0 1rem;
+  height: 32px;
+  align-items: center;
+  border-bottom: 1px solid var(--color-border, #E2DFD7);
+  background: var(--color-ground-2, #F1EFEA);
+}
+
+/* ── Glow utilities ── */
+@utility card-hover-glow {
+  transition: background 0.1s ease, border-color 0.1s ease;
+  &:hover {
+    background: var(--color-surface-2, #F1EFEA);
+    border-color: var(--color-border-2, #C8C4B8);
   }
 }
 
-/* ── Legacy compatibility ────── */
-:root {
-  --surface-0: var(--color-ground);
-  --surface-1: var(--color-cream);
-  --accent: var(--color-inkblue);
-  --accent-2: var(--color-cyan);
-  --negative: var(--color-no);
-  --warning: var(--color-amber);
-  --background: var(--color-ground);
-  --foreground: var(--color-ink);
-  --card: var(--color-cream);
-  --card-foreground: var(--color-ink);
-  --popover: var(--color-cream);
-  --popover-foreground: var(--color-ink);
-  --primary: var(--color-magenta);
-  --primary-foreground: #ffffff;
-  --secondary: var(--color-sheet);
-  --secondary-foreground: var(--color-ink);
-  --muted: var(--color-sheet);
-  --muted-foreground: var(--color-ash);
-  --destructive: var(--color-no);
-  --destructive-foreground: #ffffff;
-  --input: var(--color-hairline);
-  --ring: var(--color-ink);
-  --color-border: var(--color-hairline);
-  --color-border-subtle: rgba(20, 24, 29, 0.08);
-  --color-primary: var(--color-magenta);
-  --color-primary-foreground: #ffffff;
-  --color-destructive: var(--color-no);
-  --color-destructive-foreground: #ffffff;
-  --color-yes-ptr: var(--color-yes);
-  --color-no-ptr: var(--color-no);
-  --color-crypto: var(--color-cyan);
-  --color-sports: var(--color-grass);
-  --color-politics: var(--color-magenta);
-  --color-tech: var(--color-yellow);
-  --color-other: var(--color-ash);
-  --color-chart-1: var(--color-cyan);
-  --color-chart-2: var(--color-grass);
-  --color-chart-3: var(--color-magenta);
-  --color-chart-4: var(--color-yellow);
-  --color-chart-5: var(--color-inkblue);
-  --color-gray-100: #f7f8fa;
-  --color-gray-200: #eef0f3;
-  --color-gray-300: #d7dbe1;
-  --color-gray-400: #9aa1ab;
-  --color-gray-500: #6b7280;
-  --color-gray-600: #4b5058;
-  --color-gray-700: #3a3f47;
-  --color-gray-800: #23262d;
-  --color-gray-900: #16181d;
-  --text-primary: var(--color-ink);
-  --text-secondary: var(--color-ash);
-  --text-muted: var(--color-ash-dim);
-  --board-border: var(--color-hairline);
-  --color-text-primary: var(--color-ink);
-  --color-text-secondary: var(--color-ash);
-  --color-outline: var(--color-hairline);
-  --color-surface: var(--color-cream);
-  --color-surface-variant: var(--color-sheet);
-  --border: var(--color-hairline);
-  --radius: 6px;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+/* ── Navigation ── */
+@utility nav-pill {
+  position: relative;
+  padding: 0.3rem 0.625rem;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--color-text-soft, #555D65);
+  transition: color 0.1s ease, background 0.1s ease;
+  &:hover {
+    color: var(--color-text, #181A1C);
+    background: var(--color-surface-2, #F1EFEA);
+  }
 }
 
+/* ── Tape item animation ── */
+@utility tape-item-enter {
+  animation: tapeSlideIn 0.25s ease-out both;
+}
+@keyframes tapeSlideIn {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ── Dropdown panel ── */
+@utility dropdown-panel {
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+/* ── Shimmer skeleton ── */
+@utility shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2, #F1EFEA) 0%,
+    var(--color-border, #E2DFD7) 50%,
+    var(--color-surface-2, #F1EFEA) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer-anim 1.6s infinite;
+}
+@keyframes shimmer-anim {
+  0%  { background-position: -200% 0; }
+  100%{ background-position:  200% 0; }
+}
+
+/* ── Step card (How it works) ── */
+@utility step-card {
+  position: relative;
+  background: var(--color-surface, #FFFFFF);
+  border: 1px solid var(--color-border, #E2DFD7);
+  border-radius: var(--radius-panel, 4px);
+  transition: border-color 0.15s ease, background 0.15s ease;
+  &:hover {
+    background: var(--color-surface-2, #F1EFEA);
+    border-color: var(--color-border-2, #C8C4B8);
+  }
+}
+
+/* ── Hero gradient ── */
+@utility hero-gradient {
+  background: transparent;
+}
+
+/* ── Flash up/down for price changes ── */
+@utility flash-up   { animation: flash-green 0.35s ease-out; }
+@utility flash-down { animation: flash-red   0.35s ease-out; }
+@keyframes flash-green {
+  0%   { background-color: rgba(29, 124, 89, 0.18); }
+  100% { background-color: transparent; }
+}
+@keyframes flash-red {
+  0%   { background-color: rgba(180, 60, 52, 0.18); }
+  100% { background-color: transparent; }
+}
+
+/* ── Ribbon ── */
+@utility ribbon {
+  width: 100%;
+  background: var(--color-surface, #FFFFFF);
+  border-top: 1px solid var(--color-border, #E2DFD7);
+  border-bottom: 1px solid var(--color-border, #E2DFD7);
+}
+
+/* ── Shimmer sweep on hover ── */
+@utility shimmer-sweep {
+  position: relative;
+  overflow: hidden;
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 38%, rgba(31,58,82,0.04) 48%, transparent 58%);
+    transform: translateX(-150%);
+    pointer-events: none;
+  }
+  &:hover::after {
+    animation: shimmerSweep 0.55s ease forwards;
+  }
+}
+@keyframes shimmerSweep {
+  from { transform: translateX(-150%); }
+  to   { transform: translateX(150%); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   COMPONENT LAYER
+   ══════════════════════════════════════════════════════════ */
 @layer components {
+  /* ── Terminal card ── */
   .terminal-card {
-    background: var(--color-cream);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-data);
-    box-shadow: var(--shadow-panel);
-    transition: border-color 0.15s ease;
+    background: var(--color-surface, #FFFFFF);
+    border: 1px solid var(--color-border, #E2DFD7);
+    border-radius: var(--radius-data, 3px);
+    transition: border-color 0.1s ease;
   }
-  .terminal-card:hover {
-    border-color: var(--color-ink);
-  }
+  .terminal-card:hover { border-color: var(--color-border-2, #C8C4B8); }
 
+  /* ── Glass panel ── */
   .glass-panel {
-    position: relative;
-    background: var(--color-cream);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-panel);
+    background: var(--color-surface, #FFFFFF);
+    border: 1px solid var(--color-border, #E2DFD7);
+    border-radius: var(--radius-panel, 4px);
   }
 
-  .holo-card {
-    position: relative;
-    background: var(--color-cream);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-panel);
-    box-shadow: var(--shadow-panel);
-    transition: border-color 0.15s ease;
-  }
-  .holo-card:hover {
-    border-color: var(--color-ink);
-  }
-  .holo-card-3d {
-    perspective: 900px;
-  }
+  /* ── Board panel ── */
   .board-panel {
-    background: var(--color-cream);
-    border: 1px solid var(--color-hairline);
-    border-radius: var(--radius-data);
-    box-shadow: var(--shadow-panel);
+    background: var(--color-surface, #FFFFFF);
+    border: 1px solid var(--color-border, #E2DFD7);
+    border-radius: var(--radius-data, 3px);
   }
-  .glass-panel-hover {
-    transition: border-color 0.15s ease;
+  .holo-card {
+    background: var(--color-surface, #FFFFFF);
+    border: 1px solid var(--color-border, #E2DFD7);
+    border-radius: var(--radius-panel, 4px);
+    transition: border-color 0.1s ease;
   }
-  .glass-panel-hover:hover {
-    border-color: var(--color-ink);
-  }
+  .holo-card:hover { border-color: var(--color-border-2, #C8C4B8); }
+  .holo-card-3d { perspective: 900px; }
+  .glass-panel-hover { transition: border-color 0.1s ease; }
+  .glass-panel-hover:hover { border-color: var(--color-border-2, #C8C4B8); }
+  .hover-lift { transition: border-color 0.1s ease; }
+  .hover-lift:hover { border-color: var(--color-border-2, #C8C4B8); }
 
+  /* ── Buttons — institutional primary ── */
   .btn-terminal-primary,
   .btn-royale,
   .btn-primary,
@@ -731,31 +860,29 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0 1.5rem;
-    height: 44px;
-    background: var(--color-magenta);
+    padding: 0 1.25rem;
+    height: 38px;
+    background: var(--color-primary, #1F3A52);
     color: #ffffff;
     font-family: var(--font-sans);
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
-    border-radius: 6px;
+    border-radius: 3px;
     cursor: pointer;
-    transition: background 0.15s ease, transform 0.15s ease,
-      box-shadow 0.15s ease;
+    border: none;
+    transition: opacity 0.12s ease, transform 0.1s ease;
+    letter-spacing: 0.01em;
   }
   .btn-terminal-primary:hover,
   .btn-royale:hover,
   .btn-primary:hover,
   .btn-amber:hover {
-    filter: brightness(0.94);
-    transform: translateY(-1px);
+    opacity: 0.92;
   }
   .btn-terminal-primary:active,
   .btn-royale:active,
   .btn-primary:active,
-  .btn-amber:active {
-    transform: scale(0.98);
-  }
+  .btn-amber:active { transform: scale(0.98); }
 
   .btn-outline-royale,
   .btn-terminal-secondary {
@@ -763,329 +890,188 @@
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0 1.5rem;
-    height: 44px;
-    background: var(--color-cream);
-    color: var(--color-ink);
-    border: 2px solid var(--color-ink);
+    padding: 0 1.25rem;
+    height: 38px;
+    background: var(--color-surface, #FFFFFF);
+    color: var(--color-text, #181A1C);
+    border: 1px solid var(--color-border, #E2DFD7);
     font-family: var(--font-sans);
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
-    border-radius: 6px;
+    border-radius: 3px;
     cursor: pointer;
-    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+    transition: border-color 0.12s ease, background 0.12s ease;
   }
   .btn-outline-royale:hover,
   .btn-terminal-secondary:hover {
-    background: var(--color-yellow);
-    border-color: var(--color-ink);
+    border-color: var(--color-primary, #1F3A52);
+    background: var(--color-surface-2, #F1EFEA);
+    color: var(--color-primary, #1F3A52);
   }
 
-  .text-gradient-gold,
-  .text-gradient {
-    color: var(--color-inkblue);
+  /* ── YES trade button — institutional forest green ── */
+  .btn-yes-trade {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-yes-bg, #EDF6F1);
+    color: var(--color-yes-text, #145C42);
+    border: 1px solid rgba(29, 124, 89, 0.35);
+    border-radius: 3px;
+    font-weight: 700;
+    transition: all 0.12s ease;
+  }
+  .btn-yes-trade:hover {
+    background: rgba(29, 124, 89, 0.16);
+    border-color: var(--color-yes, #1D7C59);
+  }
+  .btn-yes-trade.active {
+    background: var(--color-yes, #1D7C59);
+    color: #ffffff;
+    border: 1px solid var(--color-yes, #1D7C59);
   }
 
+  /* ── NO trade button — institutional brick red ── */
+  .btn-no-trade {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-no-bg, #FBF1F0);
+    color: var(--color-no-text, #8E2F29);
+    border: 1px solid rgba(180, 60, 52, 0.35);
+    border-radius: 3px;
+    font-weight: 700;
+    transition: all 0.12s ease;
+  }
+  .btn-no-trade:hover {
+    background: rgba(180, 60, 52, 0.16);
+    border-color: var(--color-no, #B43C34);
+  }
+  .btn-no-trade.active {
+    background: var(--color-no, #B43C34);
+    color: #ffffff;
+    border: 1px solid var(--color-no, #B43C34);
+  }
+
+  /* ── Text gradient ── */
+  .text-gradient-gold, .text-gradient { color: var(--color-primary, #1F3A52); }
+
+  /* ── Split flap ── */
   .split-flap-char {
     display: inline-block;
     min-width: 0.7em;
-    padding: 0.1em 0.28em;
+    padding: 0.1em 0.22em;
     text-align: center;
-    color: var(--color-ink);
-    background: var(--color-sheet);
-    border: 1px solid var(--color-hairline-2);
+    color: var(--color-text, #181A1C);
+    background: var(--color-surface-2, #F1EFEA);
+    border: 1px solid var(--color-border, #E2DFD7);
     border-radius: 3px;
-    box-shadow: var(--shadow-panel);
     font-family: var(--font-mono), monospace;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
   }
 
-  .skeleton-box,
-  .skeleton-shimmer,
-  .shimmer {
+  /* ── Skeleton ── */
+  .skeleton-box, .skeleton-shimmer, .shimmer {
     background: linear-gradient(
       90deg,
-      var(--color-sheet) 0%,
-      var(--color-hairline) 50%,
-      var(--color-sheet) 100%
+      var(--color-surface-2, #F1EFEA) 0%,
+      var(--color-border, #E2DFD7) 50%,
+      var(--color-surface-2, #F1EFEA) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer-anim 1.8s infinite;
-  }
-  @keyframes shimmer-anim {
-    0% {
-      background-position: -200% 0;
-    }
-    100% {
-      background-position: 200% 0;
-    }
+    animation: shimmer-anim 1.6s infinite;
   }
 
-  .flash-up {
-    animation: flash-green 0.3s ease-out;
-  }
-  @keyframes flash-green {
-    0% {
-      background-color: color-mix(in srgb, var(--color-yes) 14%, transparent);
-    }
-    100% {
-      background-color: transparent;
-    }
-  }
-  .flash-down {
-    animation: flash-red 0.3s ease-out;
-  }
-  @keyframes flash-red {
-    0% {
-      background-color: color-mix(in srgb, var(--color-no) 14%, transparent);
-    }
-    100% {
-      background-color: transparent;
-    }
-  }
-
-  .hover-lift {
-    transition: border-color 0.15s ease;
-  }
-  .hover-lift:hover {
-    border-color: var(--color-ink);
-  }
-
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-  .no-scrollbar {
-    scrollbar-width: none;
-  }
-  .scrollbar-thin::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
-  }
-  .bg-gradient-radial {
-    background: var(--color-cream);
-  }
-  .animate-fade-in {
-    animation: fadeIn 0.2s ease-out both;
-  }
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-  .flip-digit {
-    display: inline-block;
-    animation: tick 0.2s ease-out both;
-  }
-
+  /* ── Trade side selectors ── */
   .trade-side-yes-active {
-    border: 3px solid var(--color-ink);
-    background: var(--color-yes);
-    border-radius: 6px;
+    border: 1.5px solid var(--color-yes, #1D7C59);
+    background: var(--color-yes-bg, #EDF6F1);
+    border-radius: 3px;
   }
   .trade-side-yes-inactive {
-    border: 2px solid var(--color-hairline);
-    background: var(--color-sheet);
-    border-radius: 6px;
+    border: 1px solid var(--color-border, #E2DFD7);
+    background: var(--color-surface, #FFFFFF);
+    border-radius: 3px;
+  }
+  .trade-side-yes-inactive:hover {
+    border-color: var(--color-border-2, #C8C4B8);
+    background: var(--color-surface-2, #F1EFEA);
   }
   .trade-side-no-active {
-    border: 3px solid var(--color-ink);
-    background: var(--color-no);
-    border-radius: 6px;
+    border: 1.5px solid var(--color-no, #B43C34);
+    background: var(--color-no-bg, #FBF1F0);
+    border-radius: 3px;
   }
   .trade-side-no-inactive {
-    border: 2px solid var(--color-hairline);
-    background: var(--color-sheet);
-    border-radius: 6px;
+    border: 1px solid var(--color-border, #E2DFD7);
+    background: var(--color-surface, #FFFFFF);
+    border-radius: 3px;
   }
+  .trade-side-no-inactive:hover {
+    border-color: var(--color-border-2, #C8C4B8);
+    background: var(--color-surface-2, #F1EFEA);
+  }
+
+  /* ── Flash effects ── */
+  .flash-up { animation: flash-green 0.35s ease-out; }
+  .flash-down { animation: flash-red 0.35s ease-out; }
+  .flip-digit { display: inline-block; animation: tick 0.18s ease-out both; }
+
+  /* ── No scrollbar ── */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  .scrollbar-thin::-webkit-scrollbar { width: 3px; height: 3px; }
+
+  /* ── Misc ── */
+  .bg-gradient-radial { background: var(--color-surface, #FFFFFF); }
+  .animate-fade-in { animation: fadeIn 0.2s ease-out both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 }
 
-/* ── Enhanced UI utilities ────── */
-
-@utility nav-pill {
-  position: relative;
-  padding: 0.375rem 0.875rem;
-  border-radius: 6px;
-  font-weight: 700;
-  font-size: 13px;
-  transition: all 0.2s var(--ease-lux);
-  &::after {
-    content: "";
-    position: absolute;
-    bottom: -1px;
-    left: 50%;
-    width: 0;
-    height: 2px;
-    background: currentColor;
-    transition: width 0.2s var(--ease-lux), left 0.2s var(--ease-lux);
-    border-radius: 1px;
-  }
-  &:hover::after {
-    width: 60%;
-    left: 20%;
-  }
-}
-
-@utility card-hover-glow {
-  transition: transform 0.2s var(--ease-lux), box-shadow 0.2s var(--ease-lux),
-    border-color 0.2s ease;
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(22, 24, 29, 0.08),
-      0 2px 6px rgba(22, 24, 29, 0.04);
-    border-color: var(--color-ink);
-  }
-}
-
-@utility hero-gradient {
-  background: radial-gradient(
-      ellipse 80% 50% at 20% 40%,
-      color-mix(in srgb, var(--color-cyan) 8%, transparent),
-      transparent
-    ),
-    radial-gradient(
-      ellipse 60% 40% at 80% 60%,
-      color-mix(in srgb, var(--color-magenta) 6%, transparent),
-      transparent
-    ),
-    radial-gradient(
-      ellipse 50% 30% at 50% 80%,
-      color-mix(in srgb, var(--color-yellow) 5%, transparent),
-      transparent
-    );
-}
-
-@utility shimmer-sweep {
-  position: relative;
-  overflow: hidden;
-  &::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      105deg,
-      transparent 38%,
-      rgba(255, 255, 255, 0.45) 48%,
-      transparent 58%
-    );
-    transform: translateX(-150%);
-    pointer-events: none;
-  }
-  &:hover::after {
-    animation: shimmerSweep 0.6s ease forwards;
-  }
-}
-@keyframes shimmerSweep {
-  from {
-    transform: translateX(-150%);
-  }
-  to {
-    transform: translateX(150%);
-  }
-}
-
-@utility tape-item-enter {
-  animation: tapeSlideIn 0.3s ease-out both;
-}
-@keyframes tapeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@utility dropdown-panel {
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-panel);
-  box-shadow: 0 12px 40px rgba(22, 24, 29, 0.12),
-    0 4px 12px rgba(22, 24, 29, 0.06);
-}
-
-@utility step-card {
-  position: relative;
-  background: var(--color-cream);
-  border: 1px solid var(--color-hairline);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel);
-  overflow: hidden;
-  transition: transform 0.2s var(--ease-lux), box-shadow 0.2s var(--ease-lux),
-    border-color 0.2s ease;
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(22, 24, 29, 0.08);
-    border-color: var(--color-ink);
-  }
-}
-
-@utility probability-bar {
-  height: 6px;
-  border-radius: 3px;
-  overflow: hidden;
-  background: var(--color-sheet);
-  border: 1px solid var(--color-hairline);
-}
-
-@utility probability-fill {
-  height: 100%;
-  border-radius: 2px;
-  transition: width 0.4s var(--ease-lux);
-}
-
-/* wallet adapter */
+/* ── Wallet adapter overrides — quiet editorial financial ── */
 .wallet-button-wrapper,
 .wallet-button-wrapper > * {
   --wallet-adapter-bg: transparent !important;
 }
 .wallet-adapter-button:not([class*="trigger"]):not([data-variant]) {
-  background: var(--color-ink) !important;
-  border: none !important;
-  color: #ffffff !important;
+  background: var(--color-surface-2, #F1EFEA) !important;
+  border: 1px solid var(--color-border, #E2DFD7) !important;
+  color: var(--color-text, #181A1C) !important;
   font-family: var(--font-sans) !important;
-  font-size: 13px !important;
-  font-weight: 700;
-  border-radius: 6px !important;
-  padding: 0 16px !important;
-  height: 40px !important;
-  transition: filter 0.15s ease !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 3px !important;
+  padding: 0 12px !important;
+  height: 32px !important;
+  transition: all 0.15s ease !important;
+  letter-spacing: 0.01em !important;
 }
 .wallet-adapter-button:not([class*="trigger"]):not([data-variant]):hover {
-  filter: brightness(0.9) !important;
+  background: var(--color-border, #E2DFD7) !important;
+  border-color: var(--color-border-2, #C8C4B8) !important;
+  color: var(--color-text, #181A1C) !important;
 }
 .wallet-adapter-modal-wrapper {
-  background: var(--color-ground) !important;
+  background: rgba(24, 26, 28, 0.45) !important;
+  backdrop-filter: blur(4px) !important;
 }
 .wallet-adapter-modal {
-  background: var(--color-cream) !important;
+  background: var(--color-surface, #FFFFFF) !important;
+  border: 1px solid var(--color-border, #E2DFD7) !important;
+  border-radius: 4px !important;
+  color: var(--color-text, #181A1C) !important;
 }
 
-/* scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--color-ground);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-hairline-2);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-ash);
-}
+/* ── Scrollbars ── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--color-ground, #F8F7F4); }
+::-webkit-scrollbar-thumb { background: var(--color-border-2, #C8C4B8); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-graphite, #7F8892); }
 
+/* ── Reduced motion ── */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;

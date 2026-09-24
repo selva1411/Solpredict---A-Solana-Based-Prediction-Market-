@@ -26,21 +26,39 @@ const queryClient = new QueryClient({
   },
 });
 
+if (typeof window !== "undefined") {
+  const origError = console.error;
+  console.error = (...args: unknown[]) => {
+    if (
+      typeof args[0] === "string" &&
+      args[0].includes("ws error:") &&
+      (args[1] === undefined || args[1] === "undefined" || !args[1])
+    ) {
+      // Benign @solana/web3.js websocket retry log; suppress from triggering Next.js dev overlay
+      return;
+    }
+    origError.apply(console, args);
+  };
+}
+
 export const WalletContextProvider: FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const endpoint = useMemo(() => ENV.rpcUrl, []);
   const wsEndpoint = useMemo(() => ENV.wsEndpoint, []);
 
-  const wallets = useMemo(
-    () => [new PhantomWalletAdapter(), new SolflareWalletAdapter()],
-    []
-  );
+  // Modern Solana wallets (Phantom, Solflare, Backpack) support the Wallet Standard
+  // and are auto-detected by WalletProvider without explicit adapter instances.
+  const wallets = useMemo(() => [], []);
 
   return (
     <ConnectionProvider
       endpoint={endpoint}
-      config={{ wsEndpoint, commitment: "confirmed" }}
+      config={{
+        ...(wsEndpoint ? { wsEndpoint } : {}),
+        commitment: "confirmed",
+        disableRetryOnRateLimit: true,
+      }}
     >
       <WalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>

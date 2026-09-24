@@ -12,8 +12,9 @@ function pad(n: number): string {
 }
 
 function getParts(endTs: number) {
+  const normalizedEnd = endTs > 1e11 ? Math.floor(endTs / 1000) : endTs;
   const now = Math.floor(Date.now() / 1000);
-  const diff = Math.max(0, endTs - now);
+  const diff = Math.max(0, normalizedEnd - now);
   return {
     ended: diff <= 0,
     days: Math.floor(diff / 86400),

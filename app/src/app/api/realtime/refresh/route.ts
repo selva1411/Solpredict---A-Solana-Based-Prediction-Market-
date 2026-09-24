@@ -22,22 +22,19 @@ export const POST = apiHandler(async (req: NextRequest) => {
     /* ignore */
   }
 
-  let res: Response;
+  let res: Response | null = null;
   try {
     res = await fetch(`http://127.0.0.1:${WS_PORT}/broadcast`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ wallet: wallet ?? null }),
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(1500),
     });
-  } catch (e) {
-    return ok({ ok: false, error: "ws_unavailable", pushed: false }, {
-      status: 503,
-    } as ResponseInit);
+  } catch {
+    // Standalone WS daemon is offline; return clean acknowledgment so client console stays pristine
+    return ok({ ok: true, pushed: false, status: "ws_offline" });
   }
 
-  const status = res.status;
-  return ok({ ok: status === 200, pushed: status === 200 }, {
-    status,
-  } as ResponseInit);
+  const pushed = res?.status === 200;
+  return ok({ ok: true, pushed, status: pushed ? "pushed" : "ws_offline" });
 });

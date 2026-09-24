@@ -86,7 +86,7 @@ export const OrderBookDepth = React.memo(function OrderBookDepth({
       try {
         if (!marketPda || marketPda === "11111111111111111111111111111111")
           return;
-        const allOrders = await program.account.order.all().catch(() => []);
+        const allOrders: any[] = await program.account.order.all().catch(() => []);
         if (cancelled) return;
         const mktKey = new PublicKey(marketPda);
         const marketOrders = allOrders.filter((o) => {

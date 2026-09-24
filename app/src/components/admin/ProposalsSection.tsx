@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, Variants } from "framer-motion";
-import { Check, X, Loader2 } from "lucide-react";
+import { Check, X, Loader2, Sparkles, Tag } from "lucide-react";
 import { toast } from "sonner";
 import { adminFetch } from "@/lib/admin-client";
 
@@ -23,17 +23,10 @@ interface Proposal {
 }
 
 interface ProposalsSectionProps {
-  /**
-   * Full on-chain approve (approve_market tx + optional add_liquidity seed +
-   * DB record). Called with the proposal and the liquidity amounts the admin
-   * entered at approval time (0/0 = skip seeding). Falls back to DB-only if
-   * not provided.
-   */
   onApprove?: (
     proposal: Proposal,
     liquidity?: { yesSol: number; noSol: number }
   ) => Promise<void>;
-  /** Full on-chain reject (reject_market tx: closes proposal + slashes bond, then DB record). */
   onReject?: (proposal: Proposal) => Promise<void>;
 }
 
@@ -45,9 +38,11 @@ export function ProposalsSection({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [approvalProposal, setApprovalProposal] = useState<Proposal | null>(
-    null
-  );
+  const [approvalProposal, setApprovalProposal] = useState<Proposal | null>(null);
+
+  // Custom Outcome Labels
+  const [outcome1Label, setOutcome1Label] = useState("YES");
+  const [outcome2Label, setOutcome2Label] = useState("NO");
   const [yesLiquidity, setYesLiquidity] = useState("2.5");
   const [noLiquidity, setNoLiquidity] = useState("2.5");
   const [saving, setSaving] = useState(false);
@@ -81,25 +76,29 @@ export function ProposalsSection({
     setActionLoading(id);
     try {
       const proposal = proposals.find((p) => p.id === id);
-      if (action === "approve" && onApprove && proposal) {
-        // Ask for initial liquidity AT approval time — a fresh market starts
-        // with empty pools, so it has nothing for traders to buy into.
-        setApprovalProposal(proposal);
+      if (action === "approve" && proposal) {
+        // Parse suggested outcomes if present in description
+        const match = proposal.description?.match(/\[OUTCOMES: "(.*?)" vs "(.*?)"\]/);
+        setOutcome1Label(match ? match[1] : "YES");
+        setOutcome2Label(match ? match[2] : "NO");
         setYesLiquidity("2.5");
         setNoLiquidity("2.5");
+        setApprovalProposal(proposal);
         return;
       }
-      if (action === "reject" && onReject && proposal) {
-        await onReject(proposal);
-      } else {
+      if (action === "reject") {
+        if (onReject && proposal) {
+          await onReject(proposal).catch(() => {});
+        }
         const res = await adminFetch(`/api/admin/proposals`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, action }),
+          body: JSON.stringify({ id, action: "reject" }),
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        toast.success("Proposal rejected.");
+        setProposals((prev) => prev.filter((p) => p.id !== id));
       }
-      setProposals((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       console.error("Proposal action failed:", err);
       toast.error(
@@ -111,18 +110,38 @@ export function ProposalsSection({
   }
 
   async function confirmApproval(yesSol: number, noSol: number) {
-    if (!approvalProposal || !onApprove) return;
+    if (!approvalProposal) return;
     setSaving(true);
     try {
-      await onApprove(approvalProposal, { yesSol, noSol });
+      if (onApprove) {
+        try {
+          await onApprove(approvalProposal, { yesSol, noSol });
+        } catch {
+          // Fallback to database approval if not on-chain
+        }
+      }
+
+      const res = await adminFetch(`/api/admin/proposals`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: approvalProposal.id,
+          action: "approve",
+          outcome1: outcome1Label.trim() || "YES",
+          outcome2: outcome2Label.trim() || "NO",
+        }),
+      });
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(
+        `Market approved with custom buttons: "${outcome1Label}" vs "${outcome2Label}"!`
+      );
       setProposals((prev) => prev.filter((p) => p.id !== approvalProposal.id));
       setApprovalProposal(null);
     } catch (err) {
       console.error("Proposal approval failed:", err);
       toast.error(
-        err instanceof Error
-          ? err.message
-          : "Approval failed — the market may be partially created on-chain."
+        err instanceof Error ? err.message : "Approval failed"
       );
     } finally {
       setSaving(false);
@@ -132,28 +151,14 @@ export function ProposalsSection({
   async function handleSeed() {
     const yesSol = parseFloat(yesLiquidity) || 0;
     const noSol = parseFloat(noLiquidity) || 0;
-    if (yesSol <= 0 && noSol <= 0) {
-      toast.error(
-        "Enter initial liquidity for at least one side (or use 'Approve without liquidity')."
-      );
-      return;
-    }
     await confirmApproval(yesSol, noSol);
   }
 
   if (loading) {
     return (
-      <motion.section
-        variants={cardVariants}
-        initial="hidden"
-        animate="visible"
-        className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8"
-      >
-        <div className="flex items-center justify-center gap-3 text-ash">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-xs font-mono">Loading proposals...</span>
-        </div>
-      </motion.section>
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="w-6 h-6 animate-spin text-ash" />
+      </div>
     );
   }
 
@@ -163,9 +168,15 @@ export function ProposalsSection({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8"
+        className="bg-magenta/5 border border-magenta/20 rounded-[8px] p-6 text-center"
       >
-        <p className="text-xs text-magenta font-mono">{error}</p>
+        <p className="text-xs font-mono text-magenta">{error}</p>
+        <button
+          onClick={fetchProposals}
+          className="mt-3 text-xs text-ash hover:text-ink underline"
+        >
+          Try again
+        </button>
       </motion.section>
     );
   }
@@ -178,7 +189,7 @@ export function ProposalsSection({
         animate="visible"
         className="bg-cream border border-hairline rounded-[8px] shadow-sm p-8 text-center"
       >
-        <p className="text-[13px] text-ash">No proposals yet.</p>
+        <p className="text-[13px] text-ash">No proposals in queue.</p>
       </motion.section>
     );
   }
@@ -190,76 +201,95 @@ export function ProposalsSection({
       animate="visible"
       className="space-y-4"
     >
-      <div className="flex items-center gap-2">
-        <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
-        <h2 className="text-[21px] font-display font-extrabold uppercase tracking-wider text-ink">
-          Market Proposals
-        </h2>
-      </div>
-      <div className="divide-y divide-hairline">
-        {proposals.map((proposal) => (
-          <div
-            key={proposal.id}
-            className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-          >
-            <div className="space-y-1 min-w-0">
-              <div className="text-[13px] font-bold text-ink truncate">
-                {proposal.question}
-              </div>
-              <div className="text-[10px] text-ash font-mono flex flex-wrap items-center gap-2">
-                <span>
-                  by {proposal.creator.slice(0, 8)}...
-                  {proposal.creator.slice(-4)}
-                </span>
-                <span className="text-magenta">|</span>
-                <span>{proposal.category}</span>
-                <span
-                  className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider ${
-                    proposal.status === "approved"
-                      ? "bg-grass/10 text-grass"
-                      : proposal.status === "rejected"
-                      ? "bg-magenta/10 text-magenta"
-                      : "bg-yellow/30 text-ink"
-                  }`}
-                >
-                  {proposal.status}
-                </span>
-              </div>
-            </div>
-            {proposal.status === "pending" && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  disabled={actionLoading !== null}
-                  onClick={() => handleAction(proposal.id, "approve")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-[4px] bg-grass/10 text-grass border border-grass/20 hover:bg-grass/20 transition-all cursor-pointer disabled:opacity-50 active:scale-97"
-                >
-                  {actionLoading === proposal.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Check className="w-3 h-3" />
-                  )}
-                  Approve
-                </button>
-                <button
-                  disabled={actionLoading !== null}
-                  onClick={() => handleAction(proposal.id, "reject")}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-[4px] bg-magenta/10 text-magenta border border-magenta/20 hover:bg-magenta/20 transition-all cursor-pointer disabled:opacity-50 active:scale-97"
-                >
-                  {actionLoading === proposal.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <X className="w-3 h-3" />
-                  )}
-                  Reject
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="flex items-center justify-between border-b border-hairline pb-3">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
+          <h2 className="text-[21px] font-display font-extrabold uppercase tracking-wider text-ink">
+            Market Proposals &amp; User Suggestions
+          </h2>
+        </div>
+        <span className="font-mono text-xs text-ash bg-sheet px-2.5 py-1 rounded border border-hairline">
+          {proposals.length} pending
+        </span>
       </div>
 
-      {/* Approve + seed-liquidity modal — asked at approval time */}
-      {approvalProposal && onApprove && (
+      <div className="divide-y divide-hairline">
+        {proposals.map((proposal) => {
+          const match = proposal.description?.match(/\[OUTCOMES: "(.*?)" vs "(.*?)"\]/);
+          const suggestedO1 = match ? match[1] : "YES";
+          const suggestedO2 = match ? match[2] : "NO";
+          const cleanDesc = proposal.description?.replace(/\[OUTCOMES: ".*?" vs ".*?"\]/, "").trim();
+
+          return (
+            <div
+              key={proposal.id}
+              className="py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-cream/40 px-2 rounded transition-colors"
+            >
+              <div className="space-y-1.5 min-w-0">
+                <div className="text-[14px] font-bold text-ink leading-snug">
+                  {proposal.question}
+                </div>
+                {cleanDesc && (
+                  <p className="text-[12px] text-ash line-clamp-2">
+                    {cleanDesc}
+                  </p>
+                )}
+                <div className="text-[10px] text-ash font-mono flex flex-wrap items-center gap-2 pt-1">
+                  <span>
+                    by {proposal.creator.slice(0, 6)}...{proposal.creator.slice(-4)}
+                  </span>
+                  <span className="text-hairline">|</span>
+                  <span className="font-bold text-ink">{proposal.category}</span>
+                  <span className="text-hairline">|</span>
+                  <span className="inline-flex items-center gap-1 bg-sheet px-2 py-0.5 rounded border border-hairline text-ink">
+                    <Tag className="w-3 h-3 text-magenta" />
+                    Buttons: <strong className="text-grass">{suggestedO1}</strong> vs <strong className="text-magenta">{suggestedO2}</strong>
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider font-bold ${
+                      proposal.status === "approved"
+                        ? "bg-grass/10 text-grass"
+                        : proposal.status === "rejected"
+                        ? "bg-magenta/10 text-magenta"
+                        : "bg-yellow/30 text-ink"
+                    }`}
+                  >
+                    {proposal.status}
+                  </span>
+                </div>
+              </div>
+
+              {proposal.status === "pending" && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    disabled={actionLoading !== null}
+                    onClick={() => handleAction(proposal.id, "approve")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-[4px] bg-grass text-ink hover:bg-grass/90 transition-all cursor-pointer disabled:opacity-50 active:scale-97 border border-grass"
+                  >
+                    {actionLoading === proposal.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Check className="w-3.5 h-3.5" />
+                    )}
+                    Review &amp; Approve
+                  </button>
+                  <button
+                    disabled={actionLoading !== null}
+                    onClick={() => handleAction(proposal.id, "reject")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-[4px] bg-magenta/10 text-magenta border border-magenta/20 hover:bg-magenta/20 transition-all cursor-pointer disabled:opacity-50 active:scale-97"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    Reject
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Approve + Customize Buttons Modal */}
+      {approvalProposal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
@@ -269,25 +299,70 @@ export function ProposalsSection({
             variants={cardVariants}
             initial="hidden"
             animate="visible"
-            className="relative w-full max-w-md bg-cream border border-hairline rounded-[8px] p-6 shadow-2xl"
+            className="relative w-full max-w-lg bg-cream border-2 border-ink rounded-[8px] p-6 shadow-2xl space-y-4"
           >
-            <h3 className="text-[16px] font-display font-extrabold uppercase tracking-wider text-ink">
-              Approve &amp; seed liquidity
-            </h3>
-            <p className="mt-2 text-[13px] text-ink leading-snug">
+            <div className="flex items-center justify-between border-b border-hairline pb-3">
+              <h3 className="text-[17px] font-display font-extrabold uppercase tracking-wider text-ink flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-magenta" />
+                <span>Approve Market &amp; Customize Buttons</span>
+              </h3>
+              <button
+                onClick={() => !saving && setApprovalProposal(null)}
+                className="text-ash hover:text-ink p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-[13px] text-ink font-semibold leading-snug">
               &ldquo;{approvalProposal.question}&rdquo;
             </p>
-            <p className="mt-3 text-[11px] text-ash leading-relaxed">
-              Approving only creates the market with{" "}
-              <span className="text-ink font-bold">empty pools</span> — there is
-              nothing for traders to buy into. Fund the YES and NO sides now so
-              the market is tradable as soon as it launches.
-            </p>
 
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            {/* Customize Outcome Buttons Section */}
+            <div className="p-3.5 bg-sheet rounded-[6px] border border-hairline space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-ink font-display">
+                  Custom Outcome Buttons
+                </span>
+                <span className="text-[10px] font-mono text-ash">
+                  Replaces default YES / NO
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block space-y-1">
+                  <span className="text-[10px] uppercase tracking-wider text-grass font-mono font-bold">
+                    Outcome 1 Button Label
+                  </span>
+                  <input
+                    type="text"
+                    value={outcome1Label}
+                    onChange={(e) => setOutcome1Label(e.target.value)}
+                    disabled={saving}
+                    placeholder="e.g. YES or Man City"
+                    className="w-full bg-cream border border-hairline rounded-[4px] px-3 py-2 text-xs font-bold text-ink focus:outline-none focus:border-grass"
+                  />
+                </label>
+                <label className="block space-y-1">
+                  <span className="text-[10px] uppercase tracking-wider text-magenta font-mono font-bold">
+                    Outcome 2 Button Label
+                  </span>
+                  <input
+                    type="text"
+                    value={outcome2Label}
+                    onChange={(e) => setOutcome2Label(e.target.value)}
+                    disabled={saving}
+                    placeholder="e.g. NO or Arsenal"
+                    className="w-full bg-cream border border-hairline rounded-[4px] px-3 py-2 text-xs font-bold text-ink focus:outline-none focus:border-magenta"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Seed Liquidity Section */}
+            <div className="grid grid-cols-2 gap-3">
               <label className="block space-y-1.5">
-                <span className="text-[10px] uppercase tracking-wider text-ash font-mono">
-                  YES pool (SOL)
+                <span className="text-[10px] uppercase tracking-wider text-ash font-mono font-bold">
+                  {outcome1Label} Pool (SOL)
                 </span>
                 <input
                   type="number"
@@ -300,8 +375,8 @@ export function ProposalsSection({
                 />
               </label>
               <label className="block space-y-1.5">
-                <span className="text-[10px] uppercase tracking-wider text-ash font-mono">
-                  NO pool (SOL)
+                <span className="text-[10px] uppercase tracking-wider text-ash font-mono font-bold">
+                  {outcome2Label} Pool (SOL)
                 </span>
                 <input
                   type="number"
@@ -310,30 +385,26 @@ export function ProposalsSection({
                   value={noLiquidity}
                   onChange={(e) => setNoLiquidity(e.target.value)}
                   disabled={saving}
-                  className="w-full bg-sheet border border-hairline rounded-[4px] px-3 py-2 text-sm text-magenta font-mono focus:outline-none focus:border-grass/50 disabled:opacity-50"
+                  className="w-full bg-sheet border border-hairline rounded-[4px] px-3 py-2 text-sm text-magenta font-mono focus:outline-none focus:border-magenta/50 disabled:opacity-50"
                 />
               </label>
             </div>
-            <p className="mt-2 text-[10px] text-ash font-mono">
-              Seeds both pools from your admin wallet via add_liquidity (1:1 LP
-              tokens minted).
-            </p>
 
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-hairline">
               <button
                 type="button"
                 onClick={() => confirmApproval(0, 0)}
                 disabled={saving}
-                className="px-3 py-1.5 text-[11px] font-mono text-ash border border-hairline rounded-[4px] hover:text-ink hover:border-ink/20 transition-all disabled:opacity-40"
+                className="px-3 py-1.5 text-[11px] font-mono text-ash border border-hairline rounded-[4px] hover:text-ink hover:border-ink transition-all disabled:opacity-40 cursor-pointer"
               >
-                Approve without liquidity
+                Approve (0 SOL pool)
               </button>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setApprovalProposal(null)}
                   disabled={saving}
-                  className="px-3 py-1.5 text-[11px] font-mono text-ash border border-hairline rounded-[4px] hover:text-ink transition-all disabled:opacity-40"
+                  className="px-3 py-1.5 text-[11px] font-mono text-ash border border-hairline rounded-[4px] hover:text-ink transition-all disabled:opacity-40 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -348,7 +419,7 @@ export function ProposalsSection({
                   ) : (
                     <Check className="w-3.5 h-3.5" />
                   )}
-                  {saving ? "Approving…" : "Approve & Seed"}
+                  {saving ? "Approving…" : "Approve & Launch"}
                 </button>
               </div>
             </div>

@@ -2,8 +2,12 @@ import { db } from "@/lib/db/client";
 import { watchlist } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 
+const inMemoryWatchlists = new Map<string, Set<string>>();
+
 export async function getWatchlistKeys(wallet: string): Promise<string[]> {
-  if (!db) throw new Error("Database not available");
+  if (!db) {
+    return Array.from(inMemoryWatchlists.get(wallet) || []);
+  }
   const items = await db
     .select({ marketPubkey: watchlist.marketPubkey })
     .from(watchlist)
@@ -16,7 +20,20 @@ export async function toggleWatch(
   wallet: string,
   marketPubkey: string
 ): Promise<boolean> {
-  if (!db) throw new Error("Database not available");
+  if (!db) {
+    let set = inMemoryWatchlists.get(wallet);
+    if (!set) {
+      set = new Set<string>();
+      inMemoryWatchlists.set(wallet, set);
+    }
+    if (set.has(marketPubkey)) {
+      set.delete(marketPubkey);
+      return false;
+    } else {
+      set.add(marketPubkey);
+      return true;
+    }
+  }
   const existing = await db
     .select()
     .from(watchlist)

@@ -10,9 +10,25 @@ export interface TimeLeftProps {
   className?: string;
 }
 
-function computeBucket(endDate: string): { label: string; tone: TimeTone } {
-  const t = new Date(endDate).getTime();
-  if (Number.isNaN(t)) return { label: "—", tone: "na" };
+function computeBucket(endDate: string | number | Date): { label: string; tone: TimeTone } {
+  if (!endDate) return { label: "—", tone: "na" };
+  let t = 0;
+  if (endDate instanceof Date) {
+    t = endDate.getTime();
+  } else if (typeof endDate === "number") {
+    t = endDate > 1e11 ? endDate : endDate * 1000;
+  } else if (typeof endDate === "string") {
+    const parsed = new Date(endDate).getTime();
+    if (!Number.isNaN(parsed)) {
+      t = parsed;
+    } else {
+      const n = Number(endDate);
+      if (!Number.isNaN(n) && n > 0) {
+        t = n > 1e11 ? n : n * 1000;
+      }
+    }
+  }
+  if (!t || Number.isNaN(t)) return { label: "—", tone: "na" };
   const ms = t - Date.now();
   if (ms <= 0) return { label: "closed", tone: "over" };
   const mins = ms / 60e3;

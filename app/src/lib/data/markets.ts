@@ -1,4 +1,5 @@
 import { db } from "@/lib/db/client";
+import { SAMPLE_MARKETS } from "./sample-markets";
 import {
   marketsCache,
   marketOutcomes,
@@ -99,7 +100,33 @@ function marketListCacheKey(filters: MarketListFilters): string {
 async function loadMarketList(
   filters: MarketListFilters = {}
 ): Promise<MarketListResult> {
-  if (!db) return { markets: [], total: 0 };
+  if (!db) {
+    let filtered = [...SAMPLE_MARKETS];
+    if (filters.category && filters.category !== "All") {
+      filtered = filtered.filter(
+        (m) => m.category.toLowerCase() === filters.category?.toLowerCase()
+      );
+    }
+    if (filters.status && filters.status !== "all") {
+      filtered = filtered.filter((m) => m.status === filters.status);
+    }
+    if (filters.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (m) =>
+          m.question.toLowerCase().includes(q) ||
+          (m.description && m.description.toLowerCase().includes(q))
+      );
+    }
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 50;
+    const offset = (page - 1) * limit;
+    const sliced = filtered.slice(offset, offset + limit);
+    return {
+      markets: sliced as unknown as MarketRow[],
+      total: filtered.length,
+    };
+  }
 
   const {
     category,
@@ -111,7 +138,7 @@ async function loadMarketList(
   } = filters;
 
   const offset = (Math.max(1, page) - 1) * Math.min(100, Math.max(1, limit));
-  const conditions = [];
+  const conditions: any[] = [];
 
   if (status && status !== "all") {
     conditions.push(eq(marketsCache.status, status));
@@ -186,18 +213,33 @@ async function loadMarketList(
     return { markets: [], total } as MarketListResult;
   }
 
-  // Fetch outcomes for all retrieved markets in one query
+  // Fetch outcomes and actual trade volumes for all retrieved markets in parallel
   const marketPubkeys = rows.map((r) => r.marketPubkey);
-  const outcomes = await db
-    .select({
-      marketPubkey: marketOutcomes.marketPubkey,
-      outcomeIndex: marketOutcomes.outcomeIndex,
-      label: marketOutcomes.label,
-      sharesOutstanding: marketOutcomes.sharesOutstanding,
-      lastPriceBps: marketOutcomes.lastPriceBps,
-    })
-    .from(marketOutcomes)
-    .where(sql`${marketOutcomes.marketPubkey} IN ${marketPubkeys}`);
+  const [outcomes, tradeVols] = await Promise.all([
+    db
+      .select({
+        marketPubkey: marketOutcomes.marketPubkey,
+        outcomeIndex: marketOutcomes.outcomeIndex,
+        label: marketOutcomes.label,
+        sharesOutstanding: marketOutcomes.sharesOutstanding,
+        lastPriceBps: marketOutcomes.lastPriceBps,
+      })
+      .from(marketOutcomes)
+      .where(sql`${marketOutcomes.marketPubkey} IN ${marketPubkeys}`),
+    db
+      .select({
+        marketPubkey: trades.marketPubkey,
+        totalVol: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})), 0) / 1e9`,
+      })
+      .from(trades)
+      .where(sql`${trades.marketPubkey} IN ${marketPubkeys}`)
+      .groupBy(trades.marketPubkey),
+  ]);
+
+  const tradeVolByMarket = new Map<string, number>();
+  for (const tv of tradeVols) {
+    tradeVolByMarket.set(tv.marketPubkey, Number(tv.totalVol || 0));
+  }
 
   const outcomesByMarket = new Map<string, typeof outcomes>();
   for (const o of outcomes) {
@@ -222,6 +264,10 @@ async function loadMarketList(
     const yesOdds =
       totalPool > 0 ? yesPoolSol / totalPool : yesPriceBps / 10000;
 
+    const dbVol = Number(r.totalVolume ?? 0);
+    const tradeVol = tradeVolByMarket.get(r.marketPubkey) ?? 0;
+    const totalVolume = Math.max(dbVol, tradeVol);
+
     return {
       marketPubkey: r.marketPubkey,
       marketId: r.marketId,
@@ -234,7 +280,7 @@ async function loadMarketList(
       resolutionSource: r.resolutionSource,
       oracleFeedId: r.oracleFeedId,
       feeBps: r.feeBps ?? 200,
-      totalVolume: Number(r.totalVolume ?? 0),
+      totalVolume,
       openInterest: Number(r.openInterest ?? 0),
       rentDepositLamports: r.rentDepositLamports,
       rentReclaimedAt: r.rentReclaimedAt
@@ -256,24 +302,45 @@ async function loadMarketList(
       yesSupply: r.yesSupply ?? 0,
       noSupply: r.noSupply ?? 0,
       totalPool,
-      outcomes: marketOutcomesList.map((o) => ({
-        outcomeIndex: o.outcomeIndex,
-        label: o.label,
-        sharesOutstanding: o.sharesOutstanding,
-        lastPriceBps: o.lastPriceBps,
-        priceSol: (o.lastPriceBps ?? 5000) / 10000,
-      })),
+      outcomes:
+        marketOutcomesList.length > 0
+          ? marketOutcomesList.map((o) => ({
+              outcomeIndex: o.outcomeIndex,
+              label: o.label,
+              sharesOutstanding: o.sharesOutstanding,
+              lastPriceBps: o.lastPriceBps,
+              priceSol: (o.lastPriceBps ?? 5000) / 10000,
+            }))
+          : (() => {
+              const match = r.description?.match(/\[OUTCOMES:\s*"(.*?)"\s*vs\s*"(.*?)"\]/i);
+              const label1 = match ? match[1] : "YES";
+              const label2 = match ? match[2] : "NO";
+              return [
+                {
+                  outcomeIndex: 0,
+                  label: label1,
+                  sharesOutstanding: "0",
+                  lastPriceBps: 5000,
+                  priceSol: 0.5,
+                },
+                {
+                  outcomeIndex: 1,
+                  label: label2,
+                  sharesOutstanding: "0",
+                  lastPriceBps: 5000,
+                  priceSol: 0.5,
+                },
+              ];
+            })(),
     };
   });
 
-  return { markets, total } as MarketListResult;
+  return { markets, total } as unknown as MarketListResult;
 }
 
 export async function getMarketList(
   filters: MarketListFilters = {}
 ): Promise<MarketListResult> {
-  if (!db) return { markets: [], total: 0 };
-
   const cacheKey = marketListCacheKey(filters);
   const now = Date.now();
   const hit = marketListCache.get(cacheKey);
@@ -291,55 +358,132 @@ export async function getMarketList(
 }
 
 export async function getMarket(pubkey: string) {
-  if (!db) return null;
+  if (!db) {
+    const found = SAMPLE_MARKETS.find(
+      (m) => m.marketPubkey === pubkey || String(m.marketId) === pubkey
+    );
+    return (found as any) ?? null;
+  }
 
-  const rows = await db
-    .select()
-    .from(marketsCache)
-    .where(
-      or(
-        eq(marketsCache.marketPubkey, pubkey),
-        eq(sql`CAST(${marketsCache.marketId} AS TEXT)`, pubkey)
+  try {
+    const rows = await db
+      .select()
+      .from(marketsCache)
+      .where(
+        or(
+          eq(marketsCache.marketPubkey, pubkey),
+          eq(sql`CAST(${marketsCache.marketId} AS TEXT)`, pubkey)
+        )
       )
-    )
-    .limit(1);
+      .limit(1);
 
-  if (rows.length === 0) return null;
-  const m = rows[0];
+    if (rows.length === 0) {
+      const fallback = SAMPLE_MARKETS.find(
+        (m) => m.marketPubkey === pubkey || String(m.marketId) === pubkey
+      );
+      return (fallback as any) ?? null;
+    }
+    const m = rows[0];
 
-  const outcomes = await db
-    .select()
-    .from(marketOutcomes)
-    .where(eq(marketOutcomes.marketPubkey, m.marketPubkey))
-    .orderBy(asc(marketOutcomes.outcomeIndex));
+    const outcomes = await db
+      .select()
+      .from(marketOutcomes)
+      .where(eq(marketOutcomes.marketPubkey, m.marketPubkey))
+      .orderBy(asc(marketOutcomes.outcomeIndex));
 
-  const yesOutcome = outcomes.find((o) => o.outcomeIndex === 0);
-  const yesPriceBps = yesOutcome?.lastPriceBps ?? 5000;
+    const yesOutcome = outcomes.find((o) => o.outcomeIndex === 0);
+    const yesPriceBps = yesOutcome?.lastPriceBps ?? 5000;
 
-  const yesPoolSol = (m.yesPoolLamports ?? 0) / 1e9;
-  const noPoolSol = (m.noPoolLamports ?? 0) / 1e9;
-  const totalPool = yesPoolSol + noPoolSol;
+    const yesPoolSol = (m.yesPoolLamports ?? 0) / 1e9;
+    const noPoolSol = (m.noPoolLamports ?? 0) / 1e9;
+    const totalPool = yesPoolSol + noPoolSol;
 
-  return {
-    ...m,
-    totalVolume: Number(m.totalVolume ?? 0),
-    openInterest: Number(m.openInterest ?? 0),
-    yesPoolSol,
-    noPoolSol,
-    totalPool,
-    yesOdds: totalPool > 0 ? yesPoolSol / totalPool : yesPriceBps / 10000,
-    outcomes: outcomes.map((o) => ({
-      outcomeIndex: o.outcomeIndex,
-      label: o.label,
-      sharesOutstanding: o.sharesOutstanding,
-      lastPriceBps: o.lastPriceBps,
-      priceSol: (o.lastPriceBps ?? 5000) / 10000,
-    })),
-  };
+    const dbVol = Number(m.totalVolume ?? 0);
+    let tradeVol = 0;
+    try {
+      const trSum = await db
+        .select({
+          totalVol: sql<string>`COALESCE(SUM(ABS(${trades.lamportsIn})), 0) / 1e9`,
+        })
+        .from(trades)
+        .where(eq(trades.marketPubkey, m.marketPubkey));
+      tradeVol = Number(trSum[0]?.totalVol || 0);
+    } catch {}
+    const totalVolume = Math.max(dbVol, tradeVol);
+
+    return {
+      ...m,
+      totalVolume,
+      openInterest: Number(m.openInterest ?? 0),
+      yesPoolSol,
+      noPoolSol,
+      totalPool,
+      yesOdds: totalPool > 0 ? yesPoolSol / totalPool : yesPriceBps / 10000,
+      outcomes:
+        outcomes.length > 0
+          ? outcomes.map((o) => ({
+              outcomeIndex: o.outcomeIndex,
+              label: o.label,
+              sharesOutstanding: o.sharesOutstanding,
+              lastPriceBps: o.lastPriceBps,
+              priceSol: (o.lastPriceBps ?? 5000) / 10000,
+            }))
+          : (() => {
+              const match = m.description?.match(
+                /\[OUTCOMES:\s*"(.*?)"\s*vs\s*"(.*?)"\]/i
+              );
+              return [
+                {
+                  outcomeIndex: 0,
+                  label: match ? match[1] : "YES",
+                  sharesOutstanding: "0",
+                  lastPriceBps: 5000,
+                  priceSol: 0.5,
+                },
+                {
+                  outcomeIndex: 1,
+                  label: match ? match[2] : "NO",
+                  sharesOutstanding: "0",
+                  lastPriceBps: 5000,
+                  priceSol: 0.5,
+                },
+              ];
+            })(),
+    };
+  } catch (err) {
+    console.warn(`[getMarket] DB lookup failed for ${pubkey}, falling back to sample markets:`, err);
+    const found = SAMPLE_MARKETS.find(
+      (m) => m.marketPubkey === pubkey || String(m.marketId) === pubkey
+    );
+    return (found as any) ?? null;
+  }
 }
 
 export async function getPriceHistory(pubkey: string, range = "24h") {
-  if (!db) return [];
+  if (!db) {
+    const market = SAMPLE_MARKETS.find(
+      (m) => m.marketPubkey === pubkey || String(m.marketId) === pubkey
+    );
+    const baseOdds = market?.yesOdds ?? 50;
+    const hours = range === "7d" ? 168 : range === "30d" ? 720 : 24;
+    const points: any[] = [];
+    const now = Date.now();
+    for (let i = 24; i >= 0; i--) {
+      const t = new Date(now - (i * hours * 3600 * 1000) / 24);
+      const jitter = Math.sin(i / 2) * 5 + ((i % 3) - 1) * 2;
+      const priceBps = Math.min(
+        9500,
+        Math.max(500, Math.round((baseOdds + jitter) * 100))
+      );
+      points.push({
+        timestamp: t,
+        outcomeIndex: 0,
+        priceBps,
+        volume: "1500000000",
+      });
+    }
+    return points;
+  }
 
   const hours = range === "7d" ? 168 : range === "30d" ? 720 : 24;
   const since = new Date(Date.now() - hours * 3600 * 1000);

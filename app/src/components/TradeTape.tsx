@@ -18,8 +18,7 @@ function short(w: string): string {
 }
 
 /**
- * The tape — last trades scrolling once, then resting. In a prediction market
- * the trade feed is the atmosphere; this renders it verbatim, no theater.
+ * The tape — live exchange trade feed scrolling across the terminal.
  */
 export function TradeTape({ initial }: { initial: TapeItem[] }) {
   const [trades, setTrades] = useState<TapeItem[]>(initial);
@@ -42,44 +41,38 @@ export function TradeTape({ initial }: { initial: TapeItem[] }) {
 
   return (
     <div
-      className="w-full overflow-hidden py-2.5 bg-cream/80 backdrop-blur-sm border-t border-b border-hairline"
+      className="w-full overflow-hidden py-2 bg-[#0D0F1C] border-b border-[#1E2240]"
       aria-label="Recent trades"
     >
-      <div className="mx-auto max-w-[1240px] px-6 flex items-center gap-0 overflow-x-auto no-scrollbar">
-        <span className="font-mono text-[9px] uppercase tracking-[.18em] text-ash-dim shrink-0 mr-3">
+      <div className="mx-auto max-w-[1360px] px-4 sm:px-6 flex items-center gap-0 overflow-x-auto no-scrollbar">
+        <span className="font-sans text-[10px] font-medium text-[#2E3255] shrink-0 mr-3 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#00E5CC] animate-pulse" />
           Tape
         </span>
-        <span className="w-px h-3 bg-hairline shrink-0 mr-3" aria-hidden />
+        <span className="w-px h-3 bg-[#1E2240] shrink-0 mr-3" aria-hidden />
         {trades.map((t, i) => (
           <span
             key={t.signature}
-            className="shrink-0 inline-flex items-center gap-1.5 font-mono text-[10px] tnum whitespace-nowrap pr-4 tape-item-enter"
-            style={{ animationDelay: `${i * 30}ms` }}
+            className="shrink-0 inline-flex items-center gap-1.5 font-mono text-[11px] tabular-nums whitespace-nowrap pr-4"
           >
             <span
-              className="w-1.5 h-1.5 rounded-full shrink-0"
-              style={{
-                background:
-                  t.side === "YES"
-                    ? "var(--color-grass)"
-                    : "var(--color-magenta)",
-              }}
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                t.side === "YES" ? "bg-[#00E5CC]" : "bg-[#E040FB]"
+              }`}
               aria-hidden
             />
-            <span className="text-ash-dim">{short(t.trader)}</span>
-            <span className="text-ink font-semibold">
+            <span className="text-[#4D5180]">{short(t.trader)}</span>
+            <span className="text-[#E8EAF6] font-semibold">
               {(Math.abs(t.tokensOut || 0) / 1e6).toFixed(0)}x
             </span>
             <span
-              className={
-                t.side === "YES"
-                  ? "text-grass font-bold"
-                  : "text-magenta font-bold"
-              }
+              className={`font-bold ${
+                t.side === "YES" ? "text-[#33F0D8]" : "text-[#EA6EFF]"
+              }`}
             >
               {t.side}
             </span>
-            <span className="text-ash">
+            <span className="text-[#8B90B8]">
               @{" "}
               {(
                 Math.abs(t.lamportsIn || 0) /
@@ -89,7 +82,7 @@ export function TradeTape({ initial }: { initial: TapeItem[] }) {
               SOL
             </span>
             {i < trades.length - 1 && (
-              <span className="text-hairline-2 ml-1">·</span>
+              <span className="text-[#1E2240] ml-2">·</span>
             )}
           </span>
         ))}

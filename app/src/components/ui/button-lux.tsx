@@ -7,15 +7,14 @@ export function ButtonLux({
   ...p
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: V }) {
   const base =
-    "inline-flex h-11 items-center justify-center gap-2 rounded-[4px] px-6 font-bold text-[13px] snap " +
-    "transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-offset-2 " +
-    "focus-visible:ring-offset-cream focus-visible:outline-none active:translate-y-px disabled:opacity-40 " +
-    "disabled:pointer-events-none";
+    "inline-flex h-9 items-center justify-center gap-2 rounded-[3px] px-4 font-medium text-[13px] " +
+    "transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#1F3A52] dark:focus-visible:ring-[#7A9BB5] " +
+    "disabled:opacity-40 disabled:pointer-events-none cursor-pointer";
   const v: Record<V, string> = {
-    ink: "bg-ink-fill text-white hover:bg-ink-fill-soft",
+    ink: "bg-[#1F3A52] text-white hover:bg-[#162B3D] dark:bg-[#6D97B0] dark:text-[#131518] dark:hover:bg-[#7FA7BF]",
     ghost:
-      "border-2 border-ink bg-cream text-ink hover:bg-yellow hover:text-ink-static",
-    quiet: "text-ash hover:text-ink",
+      "border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#181A1C] dark:text-[#EAE8E3] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A]",
+    quiet: "text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]",
   };
   return <button className={cn(base, v[variant], className)} {...p} />;
 }

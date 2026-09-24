@@ -13,7 +13,7 @@ export function buildUserMessage(issuedAtMs: number = Date.now()): string {
     USER_MESSAGE_PREFIX,
     `Issued At: ${new Date(issuedAtMs).toISOString()}`,
     `Expires At: ${new Date(expiresAtMs).toISOString()}`,
-  ].join("\n");
+  ].join(" | ");
 }
 
 /**

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useProgram } from "./useProgram";
 import { useRealtime } from "./useRealtime";
+import { subscribeAppActivity } from "@/lib/sync-events";
 import { PublicKey } from "@solana/web3.js";
 
 export interface UserPosition {
@@ -117,6 +118,17 @@ export function useUserPositions(pollIntervalMs = 15_000) {
     });
     return () => unsub?.();
   }, [fetchPositions, fetchDbPositions, rt]);
+
+  // Universal Cross-Page & Cross-Tab Activity Listener
+  useEffect(() => {
+    const unsub = subscribeAppActivity((detail) => {
+      if (!publicKey || !detail?.wallet || detail.wallet === publicKey.toBase58()) {
+        fetchPositions();
+        fetchDbPositions();
+      }
+    });
+    return () => unsub();
+  }, [fetchPositions, fetchDbPositions, publicKey]);
 
   const hasOnChainData = positions.length > 0;
   const mergedPositions = hasOnChainData ? positions : [];

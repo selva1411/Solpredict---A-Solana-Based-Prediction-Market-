@@ -10,8 +10,8 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <div className={cn("surface", className)}>
-      {feature && <div className="h-1 bg-cyan" aria-hidden />}
+    <div className={cn("bg-cream border border-hairline rounded-xl overflow-hidden shadow-sm", className)}>
+      {feature && <div className="h-0.5 bg-primary" aria-hidden />}
       {children}
     </div>
   );

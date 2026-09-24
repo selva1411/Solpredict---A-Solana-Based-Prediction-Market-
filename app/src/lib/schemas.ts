@@ -62,6 +62,7 @@ export const syncMarketSchema = z.object({
   noSupply: z.number().min(0).optional(),
   endTs: z.number().min(0).optional(),
   resolveTs: z.number().min(0).optional(),
+  outcomes: z.array(z.string().min(1).max(100)).optional(),
 });
 
 export const analyzeMarketSchema = z.object({

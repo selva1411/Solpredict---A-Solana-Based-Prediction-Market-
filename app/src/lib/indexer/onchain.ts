@@ -31,7 +31,7 @@ import { ENV } from "@/lib/env";
 
 const PROGRAM_ID =
   process.env.NEXT_PUBLIC_PROGRAM_ID ??
-  "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG";
+  "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg";
 const RPC_URL = ENV.serverRpcUrl;
 
 const BASE_UNITS_PER_SHARE = 1_000_000;
@@ -48,10 +48,9 @@ function getConnection(): Connection {
 
 function getProgram(): Program<Solpredict> {
   if (!programInstance) {
-    // Read-only account fetches only — a throwaway keypair is sufficient.
-    const throwaway = Keypair.generate();
+    // Read-only account fetches only — a dummy wallet is sufficient.
     const dummyWallet = {
-      publicKey: throwaway.publicKey,
+      publicKey: PublicKey.default,
       signTransaction: async (tx: unknown) => tx,
       signAllTransactions: async (txs: unknown[]) => txs,
     };

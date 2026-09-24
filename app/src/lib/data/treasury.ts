@@ -12,7 +12,7 @@ export async function getLedger(filters: TreasuryLedgerFilters = {}) {
   if (!db) return [];
 
   const { kind, direction, limit = 50 } = filters;
-  const conditions = [];
+  const conditions: any[] = [];
 
   if (kind) conditions.push(eq(treasuryLedger.kind, kind));
   if (direction) conditions.push(eq(treasuryLedger.direction, direction));

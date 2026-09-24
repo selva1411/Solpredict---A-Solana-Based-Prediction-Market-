@@ -25,6 +25,7 @@ export const GET = apiHandler(async (req: NextRequest) => {
     const rows = await getNotifications(auth.identity.wallet, limit);
     return ok({ ok: true, notifications: rows });
   } catch (err) {
-    return serverError(err);
+    console.warn("[Notifications] Error fetching notifications, returning empty fallback:", err);
+    return ok({ ok: true, notifications: [], fallback: true });
   }
 });

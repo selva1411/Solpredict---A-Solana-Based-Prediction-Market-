@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { PublicKey } from "@solana/web3.js";
-import { ed25519 } from "@noble/curves/ed25519";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { sign } from "jsonwebtoken";
 import { verify } from "jsonwebtoken";
 import { randomBytes, randomUUID } from "crypto";

@@ -2,14 +2,17 @@ import { NextRequest } from "next/server";
 import { ok, serverError } from "@/lib/api-response";
 import { apiHandler } from "@/lib/api-handler";
 
-let cachedPrice = 0;
+let cachedPrice = 185.50;
 let cacheTime = 0;
 const CACHE_MS = 30_000;
 
 async function fetchFromCoinGecko(): Promise<number> {
   const res = await fetch(
     "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd",
-    { next: { revalidate: 30 } }
+    {
+      next: { revalidate: 30 },
+      signal: AbortSignal.timeout(3500),
+    }
   );
   if (!res.ok) throw new Error(`coingecko ${res.status}`);
   const json = await res.json();
@@ -24,6 +27,7 @@ async function fetchFromBinance(): Promise<number> {
     "https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT",
     {
       next: { revalidate: 30 },
+      signal: AbortSignal.timeout(3500),
     }
   );
   if (!res.ok) throw new Error(`binance ${res.status}`);
@@ -33,9 +37,9 @@ async function fetchFromBinance(): Promise<number> {
   return price;
 }
 
-export const GET = apiHandler(async (req: NextRequest) => {
+export const GET = apiHandler(async (_req: NextRequest) => {
   const now = Date.now();
-  if (cachedPrice > 0 && now - cacheTime < CACHE_MS) {
+  if (cachedPrice > 0 && now - cacheTime < CACHE_MS && cacheTime > 0) {
     return ok({ ok: true, price: cachedPrice, source: "cache" });
   }
 
@@ -49,7 +53,12 @@ export const GET = apiHandler(async (req: NextRequest) => {
       price = await fetchFromBinance();
       source = "binance";
     } catch {
-      return serverError("Unable to fetch SOL price");
+      // Graceful fallback to last cached or default SOL price, never return 500
+      return ok({
+        ok: true,
+        price: cachedPrice > 0 ? cachedPrice : 185.50,
+        source: "fallback",
+      });
     }
   }
 

@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getMarket, getPriceHistory } from "@/lib/data/markets";
+import { SAMPLE_MARKETS } from "@/lib/data/sample-markets";
 import { getMarketComments } from "@/lib/db/store";
 import { getTradesByMarketFromDb } from "@/lib/db/trades-store";
 import { ok, notFound, serverError } from "@/lib/api-response";
@@ -62,7 +63,23 @@ export const GET = apiHandler(
         },
       });
     } catch (err) {
-      return serverError(err);
+      console.warn(`[Market Detail] Error fetching market ${id}, attempting fallback:`, err);
+      const fallback = SAMPLE_MARKETS.find(
+        (m) => m.marketPubkey === id || String(m.marketId) === id
+      );
+      if (fallback) {
+        return ok({
+          ok: true,
+          market: fallback,
+          enrichment: {
+            recentTrades: [],
+            commentsCount: 0,
+            dbPriceHistory: [],
+          },
+          fallback: true,
+        });
+      }
+      return notFound("Market not found");
     }
   },
   { cacheMaxAge: 5, cacheTags: ["markets"] }

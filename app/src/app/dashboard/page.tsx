@@ -1,11 +1,23 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 /**
- * Dashboard was a duplicate view of /portfolio (both rendered the same
- * /api/user/positions data — positions, LP positions, and net-worth/P&L
- * stats). Consolidated: /dashboard now redirects to /portfolio so there is
- * one canonical holdings page.
+ * Dashboard was consolidated into /portfolio.
+ * Client-side redirect avoids Turbopack/React Server Component
+ * performance.measure negative timestamp issues.
  */
 export default function DashboardPage() {
-  redirect("/portfolio");
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/portfolio");
+  }, [router]);
+
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <div className="text-sm font-mono text-[#7F8892]">Redirecting to portfolio...</div>
+    </div>
+  );
 }

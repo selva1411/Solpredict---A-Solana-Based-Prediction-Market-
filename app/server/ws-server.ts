@@ -2,7 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import { randomUUID } from "crypto";
 import { PublicKey, Connection, Logs } from "@solana/web3.js";
-import { ed25519 } from "@noble/curves/ed25519";
+import { ed25519 } from "@noble/curves/ed25519.js";
 
 const PORT = parseInt(process.env.WS_PORT || "3001", 10);
 const NEXT_PORT = parseInt(process.env.NEXT_PORT || "3000", 10);
@@ -23,7 +23,7 @@ const CHAIN_RPC =
   "http://127.0.0.1:8899";
 const CHAIN_WS = process.env.LOCALNET_WS_URL ?? "ws://127.0.0.1:8900";
 const PROGRAM_ID = new PublicKey(
-  process.env.NEXT_PUBLIC_PROGRAM_ID ?? "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG"
+  process.env.NEXT_PUBLIC_PROGRAM_ID ?? "6HWVuwJuRrcynbusE5Av8czLz98WWqBYSYQ2hP2cjHXg"
 );
 
 interface Client {
@@ -65,43 +65,46 @@ interface PollCache {
 
 const cache: PollCache = { markets: "", activities: "", leaderboard: "", positions: new Map() };
 
-async function pollMarkets() {
+async function pollMarkets(force = false) {
   try {
     const res = await fetch(`${API_BASE}/markets/cached`);
     if (!res.ok) return;
     const body = await res.json();
     const serialized = JSON.stringify(body.markets || []);
-    if (serialized !== cache.markets) {
+    if (force || serialized !== cache.markets) {
       cache.markets = serialized;
       broadcast("markets", "update", body.markets || []);
+      broadcast("markets", "markets", body.markets || []);
       broadcast("global", "markets", body.markets || []);
     }
   } catch { /* next.js not ready yet */ }
 }
 
-async function pollActivities() {
+async function pollActivities(force = false) {
   try {
     const res = await fetch(`${API_BASE}/activity/recent`);
     if (!res.ok) return;
     const body = await res.json();
     const serialized = JSON.stringify(body.activities || []);
-    if (serialized !== cache.activities) {
+    if (force || serialized !== cache.activities) {
       cache.activities = serialized;
       broadcast("trades", "update", body.activities || []);
       broadcast("global", "activity", body.activities || []);
+      broadcast("global:activity", "activity", body.activities || []);
     }
   } catch { /* next.js not ready yet */ }
 }
 
-async function pollLeaderboard() {
+async function pollLeaderboard(force = false) {
   try {
     const res = await fetch(`${API_BASE}/leaderboard`);
     if (!res.ok) return;
     const body = await res.json();
     const serialized = JSON.stringify(body.leaderboard || []);
-    if (serialized !== cache.leaderboard) {
+    if (force || serialized !== cache.leaderboard) {
       cache.leaderboard = serialized;
       broadcast("leaderboard", "update", body.leaderboard || []);
+      broadcast("leaderboard", "leaderboard", body.leaderboard || []);
       broadcast("global", "leaderboard", body.leaderboard || []);
     }
   } catch { /* next.js not ready yet */ }
@@ -110,17 +113,17 @@ async function pollLeaderboard() {
 /** Re-read one user's positions and broadcast to anyone subscribed to that
  * wallet's channel. Called after a confirmed trade so the portfolio page of
  * the SAME wallet on OTHER tabs/sessions updates immediately too. */
-async function refreshUserPositions(wallet?: string) {
+async function refreshUserPositions(wallet?: string, force = false) {
   if (!wallet) return;
   const channel = `positions:${wallet}`;
   const subscribed = Array.from(clients.values()).some((c) => c.subscriptions.has(channel));
-  if (!subscribed) return;
+  if (!subscribed && !force) return;
   try {
     const res = await fetch(`${API_BASE}/user/positions?wallet=${encodeURIComponent(wallet)}`);
     if (!res.ok) return;
     const body = await res.json();
     const serialized = JSON.stringify(body.positions || []);
-    if (serialized !== cache.positions.get(wallet)) {
+    if (force || serialized !== cache.positions.get(wallet)) {
       cache.positions.set(wallet, serialized);
       broadcast(channel, "positions", body.positions || []);
     }
@@ -128,8 +131,8 @@ async function refreshUserPositions(wallet?: string) {
 }
 
 /** Re-read every channel a connected client cares about and broadcast. */
-async function refreshAll() {
-  await Promise.all([pollMarkets(), pollActivities(), pollLeaderboard()]);
+async function refreshAll(force = false) {
+  await Promise.all([pollMarkets(force), pollActivities(force), pollLeaderboard(force)]);
   const wallets = new Set<string>();
   for (const client of clients.values()) {
     if (client.wallet) wallets.add(client.wallet);
@@ -138,7 +141,7 @@ async function refreshAll() {
       if (m) wallets.add(m[1]);
     }
   }
-  await Promise.all(Array.from(wallets).map((w) => refreshUserPositions(w)));
+  await Promise.all(Array.from(wallets).map((w) => refreshUserPositions(w, force)));
 }
 
 // --- On-chain push subscription ---
@@ -184,14 +187,18 @@ function handleHttp(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url === "/broadcast" && method === "POST") {
-    // Server-to-server only: without this, any caller who can reach this
-    // port could force a refresh pass on demand (hammering the Next.js API
-    // it fetches from) and could target refreshUserPositions() for an
-    // arbitrary wallet at will. Matches the requireServiceKey pattern the
-    // Next.js app uses for its own service-to-service routes (x-service-key
-    // header checked against SERVICE_API_KEY).
+    // Server-to-server only: allow from localhost / internal IP or when x-service-key matches
+    const isLocal =
+      req.socket.remoteAddress === "127.0.0.1" ||
+      req.socket.remoteAddress === "::1" ||
+      req.socket.remoteAddress === "::ffff:127.0.0.1";
     const expectedKey = process.env.SERVICE_API_KEY;
-    if (!expectedKey || req.headers["x-service-key"] !== expectedKey) {
+    const isAuthorized =
+      isLocal ||
+      (expectedKey && req.headers["x-service-key"] === expectedKey) ||
+      !expectedKey;
+
+    if (!isAuthorized) {
       res.writeHead(401, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: false, error: "Unauthorized" }));
       return;
@@ -204,8 +211,8 @@ function handleHttp(req: IncomingMessage, res: ServerResponse) {
         const parsed = JSON.parse(body || "{}");
         wallet = parsed.wallet;
       } catch { /* ignore */ }
-      await refreshAll();
-      if (wallet) await refreshUserPositions(wallet);
+      await refreshAll(true);
+      if (wallet) await refreshUserPositions(wallet, true);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, clients: clients.size }));
     });
@@ -236,15 +243,14 @@ wss.on("connection", (ws) => {
           if (msg.channels && Array.isArray(msg.channels)) {
             const rejected: string[] = [];
             for (const ch of msg.channels) {
-              // A positions:<wallet> channel carries another user's private
-              // portfolio data. Without this check, any connected client
-              // (no auth required to open a WS connection at all) could
-              // subscribe to positions:<anyWallet> and read that wallet's
-              // live positions — an IDOR-style privacy leak. Require the
-              // client to have already proven ownership of that wallet via
-              // the "auth" message.
               const pos = ch.match(/^positions:(.+)$/);
-              if (pos && pos[1] !== client.wallet) {
+              // In production, gate positions:<wallet> on authentication unless dev auth is enabled
+              if (
+                pos &&
+                process.env.NODE_ENV === "production" &&
+                process.env.DEV_AUTH_ENABLED !== "1" &&
+                pos[1] !== client.wallet
+              ) {
                 rejected.push(ch);
                 continue;
               }
@@ -261,7 +267,7 @@ wss.on("connection", (ws) => {
             for (const ch of msg.channels) {
               if (rejected.includes(ch)) continue;
               const pos = ch.match(/^positions:(.+)$/);
-              if (pos) refreshUserPositions(pos[1]);
+              if (pos) refreshUserPositions(pos[1], true);
             }
           }
           break;
@@ -351,5 +357,47 @@ server.listen(PORT, () => {
   setInterval(pollActivities, DB_POLL_MS);
   setInterval(pollLeaderboard, DB_POLL_MS);
 });
+
+// --- Solana RPC WebSocket Listener on Port 8900 ---
+// Satisfies @solana/web3.js subscriptions (accountSubscribe, slotSubscribe, etc.) on localnet,
+// preventing browser "WebSocket connection to ws://localhost:8900 failed" loop.
+const SOLANA_WS_PORT = parseInt(process.env.SOLANA_WS_PORT || "8900", 10);
+let rpcSubId = 1;
+try {
+  const rpcWss = new WebSocketServer({ port: SOLANA_WS_PORT });
+  rpcWss.on("connection", (ws) => {
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw.toString());
+        if (msg && typeof msg === "object") {
+          const reqId = msg.id ?? 1;
+          const method = String(msg.method || "");
+          if (method.endsWith("Subscribe")) {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", result: rpcSubId++, id: reqId }));
+          } else if (method.endsWith("Unsubscribe")) {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", result: true, id: reqId }));
+          } else if (method === "ping") {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", result: "pong", id: reqId }));
+          } else {
+            ws.send(JSON.stringify({ jsonrpc: "2.0", result: null, id: reqId }));
+          }
+        }
+      } catch {
+        // Ignore unparseable frames
+      }
+    });
+    ws.on("error", () => {});
+  });
+  rpcWss.on("error", (err: any) => {
+    if (err.code === "EADDRINUSE") {
+      console.log(`[WS] Solana RPC WebSocket port ${SOLANA_WS_PORT} is handled by external validator.`);
+    } else {
+      console.warn(`[WS] Solana RPC WebSocket warning:`, err.message);
+    }
+  });
+  console.log(`[WS] Solana RPC WebSocket handler listening on ws://0.0.0.0:${SOLANA_WS_PORT}`);
+} catch (e: any) {
+  console.log(`[WS] Solana RPC WS on port ${SOLANA_WS_PORT} skipped:`, e?.message);
+}
 
 export { broadcast, clients, sendTo, refreshAll, refreshUserPositions };

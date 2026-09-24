@@ -231,6 +231,7 @@ mod tests {
         assert_eq!(p_yes, SCALE / 2);
         assert_eq!(p_no, SCALE / 2);
         assert_eq!(p_yes + p_no, SCALE);
+    }
 
     #[test]
     fn spot_prices_sum_to_one_at_nonzero_fee() {
@@ -244,7 +245,6 @@ mod tests {
             assert_eq!(p_yes, SCALE * 40 / 100);
             assert_eq!(p_yes + p_no, SCALE);
         }
-    }
     }
 
     #[test]

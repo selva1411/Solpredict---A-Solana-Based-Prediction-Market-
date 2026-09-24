@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { Keypair } from "@solana/web3.js";
-import { ed25519 } from "@noble/curves/ed25519";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { PublicKey, Keypair } from "@solana/web3.js";
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { requireAdmin } from "./admin-guard";
 import { buildAdminMessage } from "./admin-message";
 import { createSessionToken } from "./auth";

@@ -109,12 +109,30 @@ export function clearUserProof(): void {
 }
 
 function applyHeaders(init?: RequestInit): RequestInit | undefined {
-  if (!cached) return init;
-  const headers = new Headers(init?.headers);
-  headers.set("x-wallet", cached.wallet);
-  headers.set("x-message", cached.message);
-  headers.set("x-signature", cached.signature);
-  return { ...init, headers };
+  const cleanHeaders: Record<string, string> = {};
+  if (init?.headers) {
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((val, key) => {
+        if (typeof val === "string") cleanHeaders[key] = val.replace(/[\r\n]+/g, " ").trim();
+      });
+    } else if (Array.isArray(init.headers)) {
+      for (const [k, v] of init.headers) {
+        if (typeof v === "string") cleanHeaders[k] = v.replace(/[\r\n]+/g, " ").trim();
+      }
+    } else {
+      for (const [k, v] of Object.entries(init.headers as Record<string, string>)) {
+        if (typeof v === "string") cleanHeaders[k] = v.replace(/[\r\n]+/g, " ").trim();
+      }
+    }
+  }
+
+  if (cached) {
+    if (cached.wallet) cleanHeaders["x-wallet"] = cached.wallet.trim();
+    if (cached.message) cleanHeaders["x-message"] = cached.message.replace(/[\r\n]+/g, " ").trim();
+    if (cached.signature) cleanHeaders["x-signature"] = cached.signature.trim();
+  }
+
+  return { ...init, headers: cleanHeaders };
 }
 
 /**

@@ -44,6 +44,7 @@ export interface UiMarket {
   yesPrice: number;
   noPrice: number;
   volume24h: number;
+  totalVolume?: number;
   liquidity: number;
   traders: number;
   icon: string;
@@ -53,6 +54,9 @@ export interface UiMarket {
   trending?: boolean;
   hot?: boolean;
   viewCount?: number;
+  yesLabel?: string;
+  noLabel?: string;
+  outcomes?: Array<{ outcomeIndex: number; label: string }>;
 }
 
 /**
@@ -79,6 +83,7 @@ export interface OnChainMarket {
   };
   // DB enrichment fields (passed from useMarkets)
   _dbVolume24h?: number;
+  _dbTotalVolume?: number;
   _dbTraders?: number;
   _dbLiquidity?: number;
   _dbViewCount?: number;
@@ -161,6 +166,7 @@ export function onChainToUiMarket(
     yesPrice,
     noPrice: 1 - yesPrice,
     volume24h,
+    totalVolume: m._dbTotalVolume ?? Number((m as any).account?.totalVolume || (m as any).totalVolume || 0),
     liquidity: m._dbLiquidity ?? liquidity,
     traders,
     icon: categoryIcon(m.account.category),
@@ -271,5 +277,8 @@ export function cacheToUiMarket(
     trending: opts?.trending ?? false,
     hot: opts?.hot ?? false,
     viewCount: c.viewCount ?? 0,
+    yesLabel: (c as any).outcomes?.[0]?.label || "YES",
+    noLabel: (c as any).outcomes?.[1]?.label || "NO",
+    outcomes: (c as any).outcomes,
   };
 }

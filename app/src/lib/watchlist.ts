@@ -26,7 +26,7 @@ export async function fetchWatchlistFromDb(
     const headers: Record<string, string> = {};
     if (auth) {
       headers["x-wallet"] = auth.wallet;
-      headers["x-message"] = auth.message;
+      headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ");
       headers["x-signature"] = auth.signature;
     }
     const res = await userFetch(`/api/watchlist?wallet=${walletPubkey}`, {
@@ -74,7 +74,7 @@ export function toggleWatchlist(
         };
         if (auth) {
           headers["x-wallet"] = auth.wallet;
-          headers["x-message"] = auth.message;
+          headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ");
           headers["x-signature"] = auth.signature;
         }
         userFetch("/api/watchlist", {

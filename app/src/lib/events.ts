@@ -63,12 +63,37 @@ export function parseTransactionEvents(
   });
 }
 
-export function formatEventTime(blockTime: number | null | undefined): string {
-  const date = blockTime ? new Date(blockTime * 1000) : new Date();
+export function formatEventTime(
+  blockTime: number | string | Date | null | undefined,
+  timeZone: string = "UTC"
+): string {
+  if (!blockTime) return "—";
+  let date: Date;
+  if (blockTime instanceof Date) {
+    date = blockTime;
+  } else if (typeof blockTime === "string") {
+    const parsed = new Date(blockTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      date = parsed;
+    } else {
+      const n = Number(blockTime);
+      if (Number.isNaN(n) || n === 0) return "—";
+      date = new Date(n > 1e11 ? n : n * 1000);
+    }
+  } else {
+    const n = Number(blockTime);
+    if (Number.isNaN(n) || n === 0) return "—";
+    date = new Date(n > 1e11 ? n : n * 1000);
+  }
+  if (Number.isNaN(date.getTime())) return "—";
   return (
-    date.toLocaleDateString() +
+    date.toLocaleDateString("en-US", { timeZone }) +
     " " +
-    date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    date.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone,
+    })
   );
 }
 
@@ -91,7 +116,7 @@ export interface AnchorMarketStatus {
 
 export function getMarketStatusString(
   status: AnchorMarketStatus | string | null | undefined,
-  endTs?: number | anchor.BN | Date | null
+  endTs?: number | string | anchor.BN | Date | null
 ): MarketStatus {
   if (!status) return "Open";
 
@@ -113,15 +138,27 @@ export function getMarketStatusString(
     if (endTs != null) {
       const now = Math.floor(Date.now() / 1000);
       let endSecs = 0;
-      if (typeof endTs === "number") endSecs = endTs;
-      else if (endTs instanceof Date)
+      if (typeof endTs === "number") {
+        endSecs = endTs > 1e11 ? Math.floor(endTs / 1000) : endTs;
+      } else if (typeof endTs === "string") {
+        const parsed = new Date(endTs).getTime();
+        if (!Number.isNaN(parsed)) {
+          endSecs = Math.floor(parsed / 1000);
+        } else {
+          const n = Number(endTs);
+          if (!Number.isNaN(n) && n > 0)
+            endSecs = n > 1e11 ? Math.floor(n / 1000) : n;
+        }
+      } else if (endTs instanceof Date) {
         endSecs = Math.floor(endTs.getTime() / 1000);
-      else if (
+      } else if (
         typeof endTs === "object" &&
         endTs !== null &&
         "toNumber" in endTs
-      )
-        endSecs = (endTs as anchor.BN).toNumber();
+      ) {
+        const n = (endTs as anchor.BN).toNumber();
+        endSecs = n > 1e11 ? Math.floor(n / 1000) : n;
+      }
 
       if (endSecs > 0 && now >= endSecs) {
         return "Ended";

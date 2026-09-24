@@ -59,15 +59,13 @@ export function MarketComments({ marketPubkey }: { marketPubkey: string }) {
 
     try {
       setSubmitting(true);
-      const auth = await signUserProof(wallet, wallet.signMessage);
+      const auth = await signUserProof(wallet, wallet.signMessage).catch(() => null);
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      if (auth) {
-        headers["x-wallet"] = auth.wallet;
-        headers["x-message"] = auth.message;
-        headers["x-signature"] = auth.signature;
-      }
+      if (auth?.wallet) headers["x-wallet"] = auth.wallet.trim();
+      if (auth?.message) headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ").trim();
+      if (auth?.signature) headers["x-signature"] = auth.signature.trim();
       const res = await userFetch(`/api/markets/${marketPubkey}/comments`, {
         method: "POST",
         headers,
@@ -122,13 +120,11 @@ export function MarketComments({ marketPubkey }: { marketPubkey: string }) {
       )
     );
     try {
-      const auth = await signUserProof(wallet, wallet.signMessage);
+      const auth = await signUserProof(wallet, wallet.signMessage).catch(() => null);
       const headers: Record<string, string> = {};
-      if (auth) {
-        headers["x-wallet"] = auth.wallet;
-        headers["x-message"] = auth.message;
-        headers["x-signature"] = auth.signature;
-      }
+      if (auth?.wallet) headers["x-wallet"] = auth.wallet.trim();
+      if (auth?.message) headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ").trim();
+      if (auth?.signature) headers["x-signature"] = auth.signature.trim();
       const res = await userFetch(
         `/api/markets/${marketPubkey}/comments/${comment.id}/upvote`,
         { method: "POST", headers }
@@ -243,12 +239,12 @@ export function MarketComments({ marketPubkey }: { marketPubkey: string }) {
                   }
                 }}
                 placeholder="Write a reply..."
-                className="flex-1 bg-cream border border-hairline rounded-[4px] px-3 py-2 text-xs text-ink placeholder-ash focus:outline-none focus:border-inkblue/60 font-mono"
+                className="flex-1 bg-cream border border-hairline rounded-[4px] px-3 py-2 text-xs text-ink placeholder-ash focus:outline-none focus:border-[#5B8FA8]/60 font-mono"
               />
               <button
                 onClick={() => handlePostReply(comment.id as number)}
                 disabled={!replyText.trim() || submitting}
-                className="px-3 py-2 bg-ink-fill text-white font-bold text-[10px] uppercase tracking-wider rounded-[4px] hover:bg-yellow hover:text-ink-static transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed snap"
+                className="px-3 py-2 bg-[#5B8FA8] text-white font-bold text-[10px] rounded-[4px] hover:brightness-110 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed snap"
               >
                 Reply
               </button>
@@ -265,12 +261,12 @@ export function MarketComments({ marketPubkey }: { marketPubkey: string }) {
   return (
     <div className="surface p-6 space-y-6">
       <div className="flex items-center justify-between border-b border-hairline pb-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider font-display text-ink flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-inkblue" />
-          <span>Community Discussion ({comments.length})</span>
+        <h3 className="text-[13px] font-semibold font-sans text-ink flex items-center gap-2">
+          <MessageSquare className="w-4 h-4 text-[#5B8FA8]" />
+          <span>Community discussion ({comments.length})</span>
         </h3>
-        <span className="text-[10px] font-mono text-ash">
-          Decentralized Discussion Layer
+        <span className="text-[10px] font-sans text-[#4D5180]">
+          Decentralized discussion layer
         </span>
       </div>
 
@@ -287,14 +283,14 @@ export function MarketComments({ marketPubkey }: { marketPubkey: string }) {
             value={newCommentText}
             disabled={!wallet?.publicKey || submitting}
             onChange={(e) => setNewCommentText(e.target.value)}
-            className="flex-1 bg-cream border border-hairline rounded-[4px] px-4 py-2.5 text-xs text-ink placeholder-ash focus:outline-none focus:border-inkblue/60 font-mono disabled:opacity-50"
+            className="flex-1 bg-cream border border-hairline rounded-[4px] px-4 py-2.5 text-xs text-ink placeholder-ash focus:outline-none focus:border-[#5B8FA8]/60 font-mono disabled:opacity-50"
           />
           <button
             type="submit"
             disabled={
               !wallet?.publicKey || !newCommentText.trim() || submitting
             }
-            className="px-4 py-2.5 bg-ink-fill text-white font-bold text-xs uppercase tracking-wider rounded-[4px] hover:bg-yellow hover:text-ink-static transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0 snap"
+            className="px-4 py-2.5 bg-[#5B8FA8] text-white font-bold text-xs rounded-[4px] hover:brightness-110 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0 snap"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Post</span>

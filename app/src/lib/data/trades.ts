@@ -1,6 +1,6 @@
 import { db } from "@/lib/db/client";
 import { trades, marketsCache } from "@/lib/db/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, SQL } from "drizzle-orm";
 
 export async function getTradeHistory(wallet: string, limit = 50) {
   if (!db) return [];
@@ -88,8 +88,56 @@ export async function getTradeMomentum(marketPubkey: string) {
   };
 }
 
-export async function getRecentActivity(wallet: string | null, limit = 50) {
-  if (!db) return [];
+export async function getRecentActivity(
+  wallet: string | null,
+  limit = 50,
+  marketPubkey?: string | null
+) {
+  if (!db) {
+    const now = Date.now();
+    return [
+      {
+        signature: "5KqXyZ...sample1",
+        marketPubkey: "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG",
+        trader: "7Xw1...94dF",
+        side: "YES" as const,
+        lamportsIn: 2500000000,
+        tokensOut: 3670000,
+        blockTime: new Date(now - 2 * 60 * 1000).toISOString(),
+        question: "Will SOL trade above $250 by Dec 31, 2026?",
+      },
+      {
+        signature: "3JpAbC...sample2",
+        marketPubkey: "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG",
+        trader: "9Py2...81aB",
+        side: "NO" as const,
+        lamportsIn: 1800000000,
+        tokensOut: 5620000,
+        blockTime: new Date(now - 6 * 60 * 1000).toISOString(),
+        question: "Will Bitcoin exceed $120,000 before Q4 2026?",
+      },
+      {
+        signature: "8MmQrS...sample3",
+        marketPubkey: "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG",
+        trader: "4Kn5...28qZ",
+        side: "YES" as const,
+        lamportsIn: 4200000000,
+        tokensOut: 4890000,
+        blockTime: new Date(now - 12 * 60 * 1000).toISOString(),
+        question: "Will US Federal Reserve lower benchmark interest rate?",
+      },
+      {
+        signature: "2VxLmN...sample4",
+        marketPubkey: "AWbRCjgFzoe3zMqtXxRzPz7zFo8PP34RLDYmpd8LyGKG",
+        trader: "6Rt7...53mK",
+        side: "YES" as const,
+        lamportsIn: 1200000000,
+        tokensOut: 1360000,
+        blockTime: new Date(now - 19 * 60 * 1000).toISOString(),
+        question: "Will SpaceX Starship land and catch the booster?",
+      },
+    ];
+  }
 
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const query = db
@@ -107,8 +155,13 @@ export async function getRecentActivity(wallet: string | null, limit = 50) {
     .leftJoin(marketsCache, eq(trades.marketPubkey, marketsCache.marketPubkey))
     .orderBy(desc(trades.blockTime));
 
-  const rows = wallet
-    ? await query.where(eq(trades.trader, wallet)).limit(safeLimit)
+  const filters: (SQL | undefined)[] = [];
+  if (wallet) filters.push(eq(trades.trader, wallet));
+  if (marketPubkey) filters.push(eq(trades.marketPubkey, marketPubkey));
+
+  const where = filters.length > 1 ? and(...filters) : filters[0];
+  const rows = where
+    ? await query.where(where).limit(safeLimit)
     : await query.limit(safeLimit);
 
   return rows.map((r) => ({

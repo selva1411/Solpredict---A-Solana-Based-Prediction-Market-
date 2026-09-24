@@ -19,10 +19,10 @@ const nextConfig: NextConfig = {
   },
   transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
   turbopack: {
-    root: __dirname,
     resolveAlias: {
       // Prevent Turbopack issues with certain packages
       "three": "three",
+      "@noble/curves/ed25519": "@noble/curves/ed25519.js",
     },
   },
   async headers() {
@@ -39,11 +39,28 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async rewrites() {
+
+  async redirects() {
     return [
       {
-        source: "/api/rpc",
-        destination: "http://127.0.0.1:8899",
+        source: "/discover",
+        destination: "/portfolio",
+        permanent: false,
+      },
+      {
+        source: "/dashboard",
+        destination: "/portfolio",
+        permanent: false,
+      },
+      {
+        source: "/admin/markets",
+        destination: "/admin?section=markets",
+        permanent: false,
+      },
+      {
+        source: "/admin/users",
+        destination: "/admin?section=users",
+        permanent: false,
       },
     ];
   },

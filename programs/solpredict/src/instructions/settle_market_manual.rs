@@ -29,7 +29,9 @@ pub fn handler(ctx: Context<SettleMarketManual>, outcome: u8) -> Result<()> {
     let clock = Clock::get()?;
 
     require!(ctx.accounts.admin.key() == ctx.accounts.config.admin, SolPredictError::Unauthorized);
-    require!(market.status == MarketStatus::Open, SolPredictError::AlreadySettled);
+    require!(market.status != MarketStatus::Settled, SolPredictError::AlreadySettled);
+    require!(market.status != MarketStatus::Cancelled, SolPredictError::AlreadyCancelled);
+    require!(market.status == MarketStatus::Open, SolPredictError::MarketNotOpen);
     require!(clock.unix_timestamp >= market.resolve_ts, SolPredictError::MarketNotEnded);
     require!(market.category != Category::Crypto, SolPredictError::UsePythForCrypto);
     require!(market.yes_pool_lamports > 0 || market.no_pool_lamports > 0, SolPredictError::EmptyPool);
@@ -52,7 +54,7 @@ pub fn handler(ctx: Context<SettleMarketManual>, outcome: u8) -> Result<()> {
         WinningOutcome::Unset => 0,
     };
 
-    let fee = payout_math::calculate_fee(losing_pool, ctx.accounts.config.fee_bps)?;
+    let fee = payout_math::calculate_fee(losing_pool, market.fee_bps)?;
     let total_payout_pool = total_pool.checked_sub(fee).ok_or(SolPredictError::MathOverflow)?;
 
     ctx.accounts.market.reentrancy_lock.acquire(&crate::ID)?;

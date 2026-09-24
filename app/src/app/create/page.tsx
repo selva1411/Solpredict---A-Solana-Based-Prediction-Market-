@@ -46,9 +46,9 @@ const DEFAULT_FEED_ID =
   "ef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d";
 
 const inputCls =
-  "w-full bg-cream border border-hairline rounded-[4px] px-4 py-3 text-[14px] text-ink placeholder:text-ash-dim " +
-  "focus:outline-none focus:border-ink focus:ring-2 focus:ring-ink/10 transition-colors";
-const labelCls = "block text-[13px] font-medium text-ink mb-1.5";
+  "w-full bg-[#FFFFFF] dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] px-3.5 py-2.5 text-[13px] text-[#181A1C] dark:text-[#EAE8E3] placeholder:text-[#7F8892] dark:placeholder:text-[#68707B] " +
+  "focus:outline-none focus:border-[#1F3A52] dark:focus:border-[#7A9BB5] transition-colors";
+const labelCls = "block text-[11px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#68707B] mb-1.5 font-semibold";
 
 export default function CreateProposalPage() {
   const router = useRouter();
@@ -71,6 +71,48 @@ export default function CreateProposalPage() {
   const [resolveDate, setResolveDate] = useState("");
   const [resolveTime, setResolveTime] = useState("");
   const [sharePriceLamports, setSharePriceLamports] = useState("0.001");
+  const [outcome1, setOutcome1] = useState("YES");
+  const [outcome2, setOutcome2] = useState("NO");
+  const [mode, setMode] = useState<"suggest" | "onchain">("suggest");
+
+  const handleSuggestSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!question || question.trim().length < 8) {
+      toast.error("Please enter a question with at least 8 characters");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/proposals/suggest", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(publicKey ? { "x-wallet": publicKey.toBase58() } : {}),
+        },
+        body: JSON.stringify({
+          question,
+          description,
+          category: CATEGORIES[category]?.label || "Crypto",
+          outcome1: outcome1.trim() || "YES",
+          outcome2: outcome2.trim() || "NO",
+          endDate: endDate ? `${endDate}T${endTime || "23:59"}:00` : undefined,
+          proposer: publicKey?.toBase58(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to submit proposal");
+      }
+      toast.success(
+        "Market suggestion submitted! It is now pending Admin approval."
+      );
+      router.push("/portfolio");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit proposal");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const feedIdBytes = (hex: string): number[] => {
     const cleaned = hex.replace(/^0x/i, "");
@@ -210,7 +252,7 @@ export default function CreateProposalPage() {
         console.warn("Proposal DB sync failed (on-chain tx succeeded):", err);
         toast.info("Proposal is on-chain, but the DB record failed to sync.");
       }
-      router.push(`/discover`);
+      router.push(`/portfolio`);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Transaction failed";
       toast.error(msg);
@@ -255,7 +297,7 @@ export default function CreateProposalPage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-[1240px] px-4 sm:px-6 py-10">
+    <main className="mx-auto w-full max-w-[1240px] px-4 sm:px-6 py-8 text-[#181A1C] dark:text-[#EAE8E3]">
       <div className="max-w-2xl mx-auto">
         <motion.div
           variants={staggerContainer}
@@ -264,25 +306,26 @@ export default function CreateProposalPage() {
           className="space-y-8"
         >
           <motion.div variants={fadeInUp}>
-            <div className="flex items-center gap-3 mb-2">
-              <span className="w-1.5 h-5 bg-cyan rounded-[1px]" />
-              <LabelLux>Propose a Market</LabelLux>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#1F3A52] dark:bg-[#7A9BB5]" />
+              <span className="font-mono text-[11px] uppercase tracking-wider text-[#7F8892] dark:text-[#68707B] font-semibold">
+                Protocol Listing Engine
+              </span>
             </div>
-            <h1 className="font-display text-[30px] font-extrabold text-ink mb-2 tracking-tight">
-              Bring a question to market
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-[#181A1C] dark:text-[#EAE8E3] mb-2">
+              Bring a Question to Market
             </h1>
-            <p className="text-[13px] text-ash leading-relaxed">
+            <p className="text-[13px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed">
               Submit a prediction market proposal with clear settlement rules.
-              Once an admin approves it, it goes live for everyone to trade.
+              Once approved by governance or admin, it deploys on-chain for trading.
             </p>
-            <p className="num font-mono text-[12px] text-grass mt-2">
-              {PROPOSAL_BOND_SOL} SOL bond required — refunded if approved,
-              slashed if rejected
+            <p className="font-mono text-[12px] text-[#1D7C59] dark:text-[#52B788] mt-2 font-medium">
+              {PROPOSAL_BOND_SOL} SOL bond required — refunded on approval.
             </p>
           </motion.div>
 
           {/* Stepper */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             {steps.map((label, i) => {
               const active = i === step;
               const done = i < step;
@@ -292,19 +335,19 @@ export default function CreateProposalPage() {
                     onClick={() => i <= step && setStep(i)}
                     disabled={i > step}
                     className={cn(
-                      "flex-1 h-10 rounded-[4px] text-[12px] font-medium border-2 transition-colors snap",
-                      active && "bg-ink-fill text-white border-ink",
-                      done && "bg-grass text-ink-static border-grass",
+                      "flex-1 h-9 rounded-[3px] font-mono text-[11px] font-medium border transition-colors cursor-pointer",
+                      active && "bg-[#1F3A52] dark:bg-[#7A9BB5] text-white border-[#1F3A52] dark:border-[#7A9BB5]",
+                      done && "bg-[#EDF6F1] dark:bg-[#1D7C59]/15 text-[#1D7C59] dark:text-[#52B788] border-[#BCDDCF] dark:border-[#1D7C59]/30",
                       !active &&
                         !done &&
-                        "bg-cream text-ash-dim border-hairline"
+                        "bg-[#F1EFEA] dark:bg-[#21252A] text-[#7F8892] dark:text-[#68707B] border-[#E2DFD7] dark:border-[#2A2F36]"
                     )}
                   >
                     {i + 1}. {label}
                   </button>
                   {i < steps.length - 1 && (
                     <span
-                      className="w-3 h-px bg-hairline shrink-0"
+                      className="w-2 h-px bg-[#E2DFD7] dark:bg-[#2A2F36] shrink-0"
                       aria-hidden
                     />
                   )}
@@ -313,7 +356,7 @@ export default function CreateProposalPage() {
             })}
           </div>
 
-          <div className="surface rounded-[8px] p-5 sm:p-7 space-y-6">
+          <div className="bg-cream border border-hairline rounded-xl p-5 sm:p-7 space-y-6 shadow-sm">
             {step === 0 && (
               <motion.div variants={fadeInUp} className="space-y-5">
                 <div>
@@ -370,6 +413,44 @@ export default function CreateProposalPage() {
                     </p>
                   )}
                 </div>
+                {/* Custom Outcome Button Labels */}
+                <div className="p-4 bg-cream/70 rounded-[6px] border-2 border-hairline space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[12px] font-bold uppercase tracking-wider text-ink font-display">
+                      Custom Outcome Buttons
+                    </label>
+                    <span className="text-[11px] font-mono text-ash">
+                      Customize buttons beyond YES / NO
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className={labelCls}>
+                        Outcome 1 Button Text <span className="text-grass font-bold">*</span>
+                      </label>
+                      <input
+                        value={outcome1}
+                        onChange={(e) => setOutcome1(e.target.value)}
+                        placeholder="e.g. YES, Man City, Trump"
+                        className={inputCls}
+                        maxLength={30}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelCls}>
+                        Outcome 2 Button Text <span className="text-magenta font-bold">*</span>
+                      </label>
+                      <input
+                        value={outcome2}
+                        onChange={(e) => setOutcome2(e.target.value)}
+                        placeholder="e.g. NO, Arsenal, Harris"
+                        className={inputCls}
+                        maxLength={30}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className={labelCls}>
                     Share Price (SOL) <span className="text-magenta">*</span>
@@ -384,6 +465,21 @@ export default function CreateProposalPage() {
                   />
                   <p className="num font-mono text-[12px] text-ash mt-1.5">
                     Face value of each share. Minimum 0.001 SOL.
+                  </p>
+                </div>
+
+                {/* Free User Suggestion Button */}
+                <div className="pt-2 border-t border-hairline">
+                  <button
+                    type="button"
+                    onClick={handleSuggestSubmit}
+                    disabled={submitting || question.length < 8}
+                    className="w-full py-3 px-4 rounded-[4px] bg-cyan text-ink font-display font-extrabold uppercase tracking-wider text-xs border-2 border-ink hover:bg-cyan/90 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-button"
+                  >
+                    {submitting ? "Submitting Suggestion…" : "✨ Submit Free Suggestion for Admin Approval (No SOL Required)"}
+                  </button>
+                  <p className="text-[11px] text-ash text-center mt-2">
+                    Free proposal for regular users — sent directly to the Admin review queue. Or click &ldquo;Next&rdquo; below to advance the on-chain wizard.
                   </p>
                 </div>
               </motion.div>
@@ -541,10 +637,10 @@ export default function CreateProposalPage() {
                         key={c.value}
                         onClick={() => setComparison(c.value)}
                         className={cn(
-                          "h-11 rounded-[4px] border-2 px-3 text-[13px] font-medium transition-colors snap",
+                          "h-9 rounded-[3px] border font-mono text-[12px] transition-colors cursor-pointer",
                           comparison === c.value
-                            ? "border-ink bg-ink-fill text-white"
-                            : "border-hairline text-ash hover:border-hairline-2 hover:text-ink"
+                            ? "border-[#1F3A52] dark:border-[#7A9BB5] bg-[#1F3A52] dark:bg-[#7A9BB5] text-white font-medium"
+                            : "border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]"
                         )}
                       >
                         {c.label}
@@ -558,15 +654,21 @@ export default function CreateProposalPage() {
             {step === steps.length - 1 && (
               <motion.div variants={fadeInUp} className="space-y-5">
                 <div>
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-1.5 h-5 bg-magenta rounded-[1px]" />
-                    <LabelLux>Review Your Proposal</LabelLux>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="w-1.5 h-3.5 bg-[#1F3A52] dark:bg-[#7A9BB5] rounded-xs" />
+                    <span className="font-mono text-[12px] font-semibold uppercase tracking-wider text-[#181A1C] dark:text-[#EAE8E3]">
+                      Review Market Parameters
+                    </span>
                   </div>
-                  <div className="divide-y divide-hairline border-2 border-ink rounded-[8px] overflow-hidden">
+                  <div className="divide-y divide-[#E2DFD7] dark:divide-[#2A2F36] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] overflow-hidden bg-[#FFFFFF] dark:bg-[#1A1D21]">
                     <Row label="Question" value={question} />
                     <Row
                       label="Category"
                       value={CATEGORIES[category]?.label ?? "Other"}
+                    />
+                    <Row
+                      label="Buttons"
+                      value={`${outcome1} vs ${outcome2}`}
                     />
                     <Row
                       label="Share Price"
@@ -600,49 +702,51 @@ export default function CreateProposalPage() {
                     )}
                   </div>
                 </div>
-                <div className="bg-yellow border-2 border-ink rounded-[8px] p-4">
-                  <p className="num font-mono text-[13px] text-ink">
-                    <span className="font-sans font-medium">
+                <div className="bg-[#F1EFEA] dark:bg-[#21252A] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] p-4">
+                  <p className="font-mono text-[12px] text-[#181A1C] dark:text-[#EAE8E3]">
+                    <span className="text-[#1F3A52] dark:text-[#7A9BB5] font-bold">
                       Bond required:
                     </span>{" "}
-                    {PROPOSAL_BOND_SOL} SOL will be held in escrow until the
-                    proposal is approved or rejected by the admin.
+                    {PROPOSAL_BOND_SOL} SOL will be deposited into the protocol vault. It is refunded immediately upon approval.
                   </p>
                 </div>
                 {!publicKey && (
-                  <div className="bg-magenta/10 border-2 border-no rounded-[8px] p-4">
-                    <p className="text-[13px] text-magenta">
-                      Connect your wallet to submit.
+                  <div className="bg-[#FBF1F0] dark:bg-[#B43C34]/10 border border-[#F1CEC9] dark:border-[#B43C34]/30 rounded-[3px] p-4">
+                    <p className="text-[13px] text-[#B43C34] dark:text-[#E57373]">
+                      Connect your wallet to submit this market proposal.
                     </p>
                   </div>
                 )}
-                <ButtonLux
+                <button
                   onClick={handleSubmit}
                   disabled={submitting || !publicKey}
-                  className="w-full"
+                  className="w-full h-10 rounded-[3px] bg-[#1F3A52] hover:bg-[#162B3D] dark:bg-[#6D97B0] dark:hover:bg-[#7FA7BF] text-white font-medium text-[13px] disabled:opacity-40 transition-colors cursor-pointer"
                 >
                   {submitting
-                    ? "Submitting…"
+                    ? "Submitting to Solana..."
                     : `Submit Proposal (${PROPOSAL_BOND_SOL} SOL bond)`}
-                </ButtonLux>
+                </button>
               </motion.div>
             )}
 
-            <div className="flex justify-between pt-5 border-t border-hairline">
-              <ButtonLux
-                variant="ghost"
+            <div className="flex justify-between pt-5 border-t border-[#E2DFD7] dark:border-[#2A2F36]">
+              <button
+                type="button"
                 onClick={() => setStep(Math.max(0, step - 1))}
                 disabled={step === 0}
+                className="px-4 py-2 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3] text-[12px] font-mono disabled:opacity-40 transition-colors cursor-pointer"
               >
                 Back
-              </ButtonLux>
+              </button>
               {step < steps.length - 1 && (
-                <ButtonLux
+                <button
+                  type="button"
                   onClick={() => setStep(step + 1)}
                   disabled={!canAdvance(step)}
+                  className="px-5 py-2 rounded-[3px] bg-[#1F3A52] hover:bg-[#162B3D] dark:bg-[#6D97B0] dark:hover:bg-[#7FA7BF] text-white text-[12px] font-mono font-medium disabled:opacity-40 transition-colors cursor-pointer"
                 >
-                  Next
-                </ButtonLux>
+                  Next Step
+                </button>
               )}
             </div>
           </div>
@@ -654,9 +758,9 @@ export default function CreateProposalPage() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between items-center gap-4 px-4 py-3 bg-sheet">
-      <span className="text-[12px] text-ash shrink-0">{label}</span>
-      <span className="num font-mono text-[12.5px] text-ink text-right break-words min-w-0">
+    <div className="flex justify-between items-center gap-4 px-4 py-3 bg-[#FFFFFF] dark:bg-[#1A1D21]">
+      <span className="font-mono text-[11px] uppercase tracking-wider text-[#7F8892] dark:text-[#68707B] shrink-0 font-medium">{label}</span>
+      <span className="font-mono text-[12px] text-[#181A1C] dark:text-[#EAE8E3] text-right break-words min-w-0 font-medium">
         {value}
       </span>
     </div>

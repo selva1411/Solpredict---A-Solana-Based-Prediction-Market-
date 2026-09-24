@@ -25,7 +25,8 @@ export const GET = apiHandler(async (req: NextRequest) => {
     const keys = await getWatchlistKeys(auth.identity.wallet);
     return ok({ ok: true, keys });
   } catch (err) {
-    return serverError(err);
+    console.warn("[Watchlist] Error fetching watchlist, returning empty fallback:", err);
+    return ok({ ok: true, keys: [], fallback: true });
   }
 });
 

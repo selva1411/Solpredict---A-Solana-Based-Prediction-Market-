@@ -6,9 +6,13 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useMemo,
 } from "react";
 import { usePathname } from "next/navigation";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRealtime } from "@/hooks/useRealtime";
+import { subscribeAppActivity } from "@/lib/sync-events";
 import {
   fetchWatchlistFromDb,
   getWatchlist,
@@ -30,6 +34,7 @@ const AppContext = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { publicKey, signMessage } = useWallet();
+  const queryClient = useQueryClient();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [watchlist, setWatchlist] = useState<string[]>([]);
@@ -38,8 +43,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
+  // Universal Cross-Page & Cross-Tab Activity Invalidator
+  useEffect(() => {
+    const unsub = subscribeAppActivity(() => {
+      void queryClient.invalidateQueries();
+    });
+    return () => unsub();
+  }, [queryClient]);
+
+  // Realtime push receiver from backend WebSocket server
+  const rt = useRealtime("global");
+  useEffect(() => {
+    const unsubActivity = rt.on("activity", () => {
+      void queryClient.invalidateQueries();
+    });
+    const unsubMarkets = rt.on("markets", () => {
+      void queryClient.invalidateQueries();
+    });
+    const unsubLeaderboard = rt.on("leaderboard", () => {
+      void queryClient.invalidateQueries();
+    });
+    return () => {
+      unsubActivity?.();
+      unsubMarkets?.();
+      unsubLeaderboard?.();
+    };
+  }, [rt.on, queryClient]);
+
   const walletPubkey = publicKey?.toBase58() ?? null;
-  const signer = publicKey ? { publicKey, signMessage } : undefined;
+  const signer = useMemo(
+    () => (publicKey ? { publicKey, signMessage } : undefined),
+    [walletPubkey, signMessage]
+  );
 
   // Persist the connected wallet so reads elsewhere stay consistent.
   useEffect(() => {
@@ -71,7 +106,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [walletPubkey, signer]);
+  }, [walletPubkey]);
 
   const toggleWatchlistItem = useCallback(
     (pubkey: string) => {
