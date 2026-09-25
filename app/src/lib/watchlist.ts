@@ -1,5 +1,5 @@
 import { logger } from "@/lib/logger";
-import { userFetch, signUserProof, type UserSigner } from "@/lib/user-client";
+import type { UserSigner } from "@/lib/user-client";
 
 export type WatchlistSigner = UserSigner;
 
@@ -15,29 +15,36 @@ export function getWatchlist(): string[] {
 
 export async function fetchWatchlistFromDb(
   walletPubkey: string,
-  signer?: UserSigner
+  _signer?: UserSigner
 ): Promise<string[]> {
   if (!walletPubkey) return getWatchlist();
   try {
-    // Prove ownership of the wallet before reading its watchlist.
-    const auth = signer
-      ? await signUserProof(signer, signer.signMessage)
-      : null;
-    const headers: Record<string, string> = {};
-    if (auth) {
-      headers["x-wallet"] = auth.wallet;
-      headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ");
-      headers["x-signature"] = auth.signature;
-    }
-    const res = await userFetch(`/api/watchlist?wallet=${walletPubkey}`, {
-      headers,
-    });
+    const res = await fetch(`/api/watchlist?wallet=${walletPubkey}`);
     const data = await res.json();
     if (data.ok && Array.isArray(data.keys)) {
+      const local = getWatchlist();
+      // Union DB keys with local keys so existing stars are never wiped
+      const merged = Array.from(new Set([...local, ...data.keys]));
       if (typeof window !== "undefined") {
-        localStorage.setItem("solpredict-watchlist", JSON.stringify(data.keys));
+        localStorage.setItem("solpredict-watchlist", JSON.stringify(merged));
+        window.dispatchEvent(
+          new CustomEvent("watchlist-updated", { detail: merged })
+        );
       }
-      return data.keys;
+
+      // If local has keys that DB doesn't have, sync them to DB in background
+      const missingInDb = local.filter((k) => !data.keys.includes(k));
+      if (missingInDb.length > 0) {
+        for (const k of missingInDb) {
+          fetch("/api/watchlist", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ wallet: walletPubkey, marketPubkey: k }),
+          }).catch(() => {});
+        }
+      }
+
+      return merged;
     }
   } catch (e) {
     logger.warn("Failed to fetch watchlist from DB:", e);
@@ -48,7 +55,7 @@ export async function fetchWatchlistFromDb(
 export function toggleWatchlist(
   key: string,
   walletPubkey?: string,
-  signer?: UserSigner
+  _signer?: UserSigner
 ): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -62,27 +69,18 @@ export function toggleWatchlist(
     const next = Array.from(set);
     localStorage.setItem("solpredict-watchlist", JSON.stringify(next));
 
-    // Sync directly with NeonDB (fire-and-forget). Attach the ownership proof
-    // so the server can verify this wallet is really the one toggling.
+    // Dispatch event so AppContext and all components in this window react immediately
+    window.dispatchEvent(
+      new CustomEvent("watchlist-updated", { detail: next })
+    );
+
+    // Sync with DB in background (fire-and-forget, without prompting wallet signatures)
     if (walletPubkey) {
-      void (async () => {
-        const auth = signer
-          ? await signUserProof(signer, signer.signMessage)
-          : null;
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-        };
-        if (auth) {
-          headers["x-wallet"] = auth.wallet;
-          headers["x-message"] = auth.message.replace(/[\r\n]+/g, " ");
-          headers["x-signature"] = auth.signature;
-        }
-        userFetch("/api/watchlist", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ wallet: walletPubkey, marketPubkey: key }),
-        }).catch((err) => logger.warn("Watchlist DB sync warning:", err));
-      })();
+      fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ wallet: walletPubkey, marketPubkey: key }),
+      }).catch((err) => logger.warn("Watchlist DB sync warning:", err));
     }
 
     return next;
@@ -96,24 +94,24 @@ export function isWatchlisted(key: string): boolean {
 }
 
 /**
- * Remove stale market pubkeys from the local watchlist (e.g. markets that were
- * re-deployed under a new program ID, so the old pubkey no longer exists).
- * Returns the pruned list. `validKeys` is the set of pubkeys that still exist.
- * The DB copy is left alone — the caller may also post the removals via
- * toggleWatchlist per key, but the localStorage is the source of stale links
- * that users click into.
+ * Remove stale market pubkeys from the local watchlist.
  */
 export function pruneWatchlist(validKeys: string[] | Set<string>): string[] {
   if (typeof window === "undefined") return [];
   try {
     const valid = new Set(validKeys);
+    if (valid.size === 0) return getWatchlist();
     const current = getWatchlist();
     const next = current.filter((k) => valid.has(k));
     if (next.length !== current.length) {
       localStorage.setItem("solpredict-watchlist", JSON.stringify(next));
+      window.dispatchEvent(
+        new CustomEvent("watchlist-updated", { detail: next })
+      );
     }
     return next;
   } catch {
     return getWatchlist();
   }
 }
+

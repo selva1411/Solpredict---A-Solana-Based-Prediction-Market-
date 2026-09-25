@@ -61,10 +61,9 @@ import { MarketComments } from "@/components/MarketComments";
 import { RelatedMarkets } from "@/components/RelatedMarkets";
 import {
   getWatchlist,
-  pruneWatchlist,
   toggleWatchlist,
-  fetchWatchlistFromDb,
 } from "@/lib/watchlist";
+import { useAppState } from "@/contexts/AppContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys } from "@/lib/api/keys";
 import { getMarketStatusString } from "@/lib/events";
@@ -515,7 +514,6 @@ export default function MarketDetailPage({
   >("idle");
   const [txSig, setTxSig] = useState<string | null>(null);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
-  const [isWatched, setIsWatched] = useState<boolean>(false);
   const [showShareOptions, setShowShareOptions] = useState<boolean>(false);
   const [feeBps, setFeeBps] = useState<number | null>(null);
   const [treasuryBalance, setTreasuryBalance] = useState<number>(0);
@@ -605,6 +603,9 @@ export default function MarketDetailPage({
     } catch {}
     return PublicKey.default;
   }, [id, initialMarket?.marketPubkey]);
+
+  const { isWatched: isWatchedInContext, toggleWatchlistItem } = useAppState();
+  const isWatched = isWatchedInContext(marketPda.toBase58());
 
   // Pre-flight check: warn the user BEFORE sending a doomed transaction.
   // An unfunded wallet makes every system transfer fail with the cryptic
@@ -1062,7 +1063,6 @@ export default function MarketDetailPage({
       marketDeployedRef.current.set(marketPda.toBase58(), true);
 
       setMarket(marketAcc);
-      setIsWatched(getWatchlist().includes(marketPda.toBase58()));
       recordProbabilitySnapshot(marketAcc);
 
       // Seed the probability sparkline from persisted DB snapshots
@@ -1679,38 +1679,6 @@ export default function MarketDetailPage({
     fetchLpInfo,
   ]);
 
-  // Keep the watchlist star in sync with the wallet's DB watchlist. AppContext
-  // loads the DB keys asynchronously after connect, so the initial read inside
-  // fetchMarket may have raced it — re-sync once the DB copy lands.
-  // IMPORTANT: the fetch resolves async. If the user toggles the star before it
-  // lands, a stale DB read (that predates the local toggle) must NOT overwrite
-  // their intent — local remove/add wins and the DB fetch result is discarded.
-  const watchlistTouchedAtRef = useRef<number>(0);
-  useEffect(() => {
-    if (!wallet?.publicKey) return;
-    let cancelled = false;
-    const touchedAtStart = watchlistTouchedAtRef.current;
-    fetchWatchlistFromDb(wallet.publicKey.toBase58(), {
-      publicKey: wallet.publicKey,
-      signMessage: wallet.signMessage,
-    })
-      .then((keys) => {
-        if (!cancelled && watchlistTouchedAtRef.current === touchedAtStart) {
-          setIsWatched(keys.includes(marketPda.toBase58()));
-        }
-      })
-      .catch(() => {
-        if (!cancelled && watchlistTouchedAtRef.current === touchedAtStart) {
-          setIsWatched(getWatchlist().includes(marketPda.toBase58()));
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [wallet?.publicKey, wallet?.signMessage, marketPda]);
-
-  // (Live SOL price chart state is managed inside LivePriceChartPanel component)
-
   if (loading) {
     return (
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
@@ -1740,20 +1708,10 @@ export default function MarketDetailPage({
   }
 
   const handleWatchlistToggle = () => {
-    // Stamp the toggle so any in-flight (stale) DB re-sync can't override it.
-    watchlistTouchedAtRef.current = Date.now();
-    const next = toggleWatchlist(
-      marketPda.toBase58(),
-      wallet?.publicKey?.toBase58(),
-      {
-        publicKey: wallet?.publicKey ?? null,
-        signMessage: wallet?.signMessage,
-      }
-    );
-    setIsWatched(next.includes(marketPda.toBase58()));
+    toggleWatchlistItem(marketPda.toBase58());
     toast.success(
-      next.includes(marketPda.toBase58())
-        ? "Added to watchlist (synced to database)!"
+      !isWatched
+        ? "Added to watchlist!"
         : "Removed from watchlist!"
     );
   };

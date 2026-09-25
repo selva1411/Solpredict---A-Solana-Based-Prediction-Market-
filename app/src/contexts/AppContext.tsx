@@ -83,19 +83,31 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [walletPubkey]);
 
-  // Initialize from localStorage and react to cross-tab changes.
+  // Initialize from localStorage and react to cross-tab or in-tab changes.
   useEffect(() => {
     setWatchlist(getWatchlist());
     const onStorage = () => setWatchlist(getWatchlist());
+    const onWatchlistUpdated = (e: Event) => {
+      const custom = e as CustomEvent<string[]>;
+      if (Array.isArray(custom.detail)) {
+        setWatchlist(custom.detail);
+      } else {
+        setWatchlist(getWatchlist());
+      }
+    };
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("watchlist-updated", onWatchlistUpdated);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("watchlist-updated", onWatchlistUpdated);
+    };
   }, []);
 
   // Load the wallet's watchlist from the DB whenever the wallet changes.
   useEffect(() => {
     if (!walletPubkey) return;
     let cancelled = false;
-    fetchWatchlistFromDb(walletPubkey, signer)
+    fetchWatchlistFromDb(walletPubkey)
       .then((keys) => {
         if (!cancelled) setWatchlist(keys);
       })
@@ -112,10 +124,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     (pubkey: string) => {
       const wallet =
         walletPubkey ?? localStorage.getItem("solpredict-wallet") ?? undefined;
-      const next = toggleWatchlist(pubkey, wallet, signer);
+      const next = toggleWatchlist(pubkey, wallet);
       setWatchlist(next);
     },
-    [walletPubkey, signer]
+    [walletPubkey]
   );
 
   const isWatched = useCallback(

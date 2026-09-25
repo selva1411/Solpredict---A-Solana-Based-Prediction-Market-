@@ -1,25 +1,15 @@
 "use client";
-import { useMarkets } from "@/hooks/useMarkets";
-import { useWallet } from "@solana/wallet-adapter-react";
-import {
-  fetchWatchlistFromDb,
-  getWatchlist,
-  pruneWatchlist,
-} from "@/lib/watchlist";
-import { signUserProof, userFetch } from "@/lib/user-client";
-import {
-  formatSol,
-  calcYesPct,
-  calcNoPct,
-  timeUntil,
-  categoryName,
-  outcomeLabel,
-} from "@/lib/format";
+
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { Star, ArrowUpRight } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Star, ArrowUpRight, Search, Compass, SlidersHorizontal } from "lucide-react";
+import { useMarkets } from "@/hooks/useMarkets";
+import { onChainMarketsToUi, type UiMarket } from "@/lib/market-adapter";
+import { useAppState } from "@/contexts/AppContext";
+import { MarketCard } from "@/components/MarketCard";
+import { MarketCardSkeleton } from "@/components/StatePanels";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
-import { cn } from "@/lib/utils";
 import type { MarketCacheEntry } from "@/lib/db/markets-store";
 
 export default function WatchlistClient({
@@ -27,200 +17,200 @@ export default function WatchlistClient({
 }: {
   initialMarkets: MarketCacheEntry[];
 }) {
-  const { markets, loading } = useMarkets(10_000, initialMarkets, {
+  const router = useRouter();
+  const { watchlist } = useAppState();
+  const { markets: onChainMarkets, loading } = useMarkets(10_000, initialMarkets, {
     status: "all",
   });
-  const { publicKey, signMessage } = useWallet();
-  const [watchlistKeys, setWatchlistKeys] = useState<string[]>([]);
 
-  useEffect(() => {
-    if (publicKey) {
-      fetchWatchlistFromDb(publicKey.toBase58(), {
-        publicKey,
-        signMessage,
-      }).then((keys) => setWatchlistKeys(keys));
-    } else {
-      setWatchlistKeys(getWatchlist());
-    }
-  }, [publicKey, signMessage]);
+  const [filterStatus, setFilterStatus] = useState<"all" | "open" | "settled">("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    if (loading || markets.length === 0) return;
-    const validKeys = new Set<string>();
-    for (const m of markets) {
-      validKeys.add(m.publicKey.toBase58());
-      validKeys.add(String(m.account.marketId));
-    }
-    const pruned = pruneWatchlist(validKeys);
-    if (pruned.length !== watchlistKeys.length) {
-      setWatchlistKeys(pruned);
-      if (publicKey) {
-        const dead = watchlistKeys.filter((k) => !pruned.includes(k));
-        for (const key of dead) {
-          void (async () => {
-            const auth = await signUserProof(
-              { publicKey, signMessage },
-              signMessage
-            );
-            const headers: Record<string, string> = {
-              "Content-Type": "application/json",
-            };
-            if (auth) {
-              headers["x-wallet"] = auth.wallet;
-              headers["x-message"] = auth.message;
-              headers["x-signature"] = auth.signature;
-            }
-            await userFetch("/api/watchlist", {
-              method: "DELETE",
-              headers,
-              body: JSON.stringify({
-                wallet: publicKey.toBase58(),
-                marketPubkey: key,
-              }),
-            }).catch(() => {});
-          })();
-        }
-      }
-    }
-  }, [loading, markets.length, publicKey, watchlistKeys]);
+  const uiMarkets: UiMarket[] = useMemo(
+    () => onChainMarketsToUi(onChainMarkets ?? []),
+    [onChainMarkets]
+  );
 
-  const watchedMarkets = markets.filter(
-    (m) =>
-      watchlistKeys.includes(m.publicKey.toBase58()) ||
-      watchlistKeys.includes(String(m.account.marketId))
+  // Filter to watched markets
+  const watchedMarkets: UiMarket[] = useMemo(() => {
+    return uiMarkets.filter(
+      (m) => watchlist.includes(m.id) || watchlist.includes(String(m.marketId))
+    );
+  }, [uiMarkets, watchlist]);
+
+  // Apply status and search filters
+  const filteredMarkets = useMemo(() => {
+    let list = watchedMarkets;
+    if (filterStatus === "open") {
+      list = list.filter((m) => m.status === "open");
+    } else if (filterStatus === "settled") {
+      list = list.filter((m) => m.status === "settled" || m.status === "cancelled");
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(
+        (m) =>
+          m.question.toLowerCase().includes(q) ||
+          m.category.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [watchedMarkets, filterStatus, searchQuery]);
+
+  const openCount = useMemo(
+    () => watchedMarkets.filter((m) => m.status === "open").length,
+    [watchedMarkets]
+  );
+  const settledCount = useMemo(
+    () =>
+      watchedMarkets.filter((m) => m.status === "settled" || m.status === "cancelled")
+        .length,
+    [watchedMarkets]
   );
 
   return (
-    <main className="mx-auto w-full max-w-[1240px] px-4 sm:px-6 py-10">
-      <div className="mb-8 rise">
-        <div className="flex items-center gap-2 mb-2">
-          <Star className="w-4 h-4 text-magenta" aria-hidden />
-          <h1 className="font-display text-[34px] font-black tracking-tight text-ink">
-            Watchlist
-          </h1>
-        </div>
-        <p className="text-[13px] text-ash mt-1">
-          {publicKey
-            ? `${watchedMarkets.length} tracked market${
-                watchedMarkets.length !== 1 ? "s" : ""
-              }`
-            : "Track markets without connecting a wallet — synced across devices when you connect."}
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="surface h-48 shimmer" />
-          ))}
-        </div>
-      ) : watchedMarkets.length === 0 ? (
-        <div className="surface-feature p-14 text-center space-y-5">
-          <span className="inline-flex items-center justify-center w-14 h-14 rounded-full border-2 border-magenta bg-sheet">
-            <Star className="w-6 h-6 text-ash-dim" aria-hidden />
-          </span>
+    <div className="min-h-screen flex flex-col bg-[var(--color-ground,#F8F7F4)] text-[var(--color-ink,#181A1C)] transition-colors">
+      <main className="mx-auto w-full max-w-[1360px] px-4 sm:px-6 py-8 sm:py-10 flex-1">
+        {/* Header */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#E2DFD7] dark:border-[#2A2F36] pb-6">
           <div>
-            <h2 className="font-display text-[20px] font-extrabold text-ink mb-2">
-              Your watchlist is empty
-            </h2>
-            <p className="text-[13px] text-ash max-w-sm mx-auto">
-              Star markets from any card to track their odds, volume and expiry
-              here.
+            <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1F2329] border border-[#E2DFD7] dark:border-[#2E353F] mb-3">
+              <Star className="w-3.5 h-3.5 fill-[#1F3A52] text-[#1F3A52] dark:fill-[#7A9BB5] dark:text-[#7A9BB5]" />
+              <span className="text-[11px] font-mono font-semibold uppercase tracking-wider text-[#555D65] dark:text-[#9AA1AA]">
+                Personal Watchlist
+              </span>
+            </div>
+            <h1
+              className="text-[32px] sm:text-[40px] font-bold tracking-tight text-[#181A1C] dark:text-[#EAE8E3] leading-[1.1]"
+              style={{ fontFamily: "var(--font-syne)" }}
+            >
+              Watched Markets
+            </h1>
+            <p className="text-[13px] text-[#555D65] dark:text-[#9AA1AA] mt-1.5 font-sans">
+              {watchedMarkets.length > 0
+                ? `Tracking ${watchedMarkets.length} market${
+                    watchedMarkets.length !== 1 ? "s" : ""
+                  } with real-time odds, volume and resolution countdowns.`
+                : "Bookmark prediction markets to monitor live odds, volume and resolution countdowns."}
             </p>
           </div>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/markets"
-              className="snap inline-flex items-center gap-2 px-5 h-11 rounded-[4px] bg-ink-fill hover:bg-ink-fill-fill-soft text-white text-[13px] font-semibold transition-colors"
-            >
-              Browse Markets <ArrowUpRight className="w-4 h-4" />
-            </Link>
-            {!publicKey && <ClientWalletButton />}
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {watchedMarkets.map((m) => {
-            const yesPct = Math.round(
-              calcYesPct(m.account.yesPoolLamports, m.account.noPoolLamports)
-            );
-            const settled = m.account.status === 1;
-            return (
+
+          {watchedMarkets.length > 0 && (
+            <div className="flex items-center gap-2 self-start md:self-auto">
               <Link
-                key={m.publicKey.toBase58()}
-                href={`/market/${m.publicKey.toBase58()}`}
-                className="block group"
+                href="/markets"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-[3px] bg-white dark:bg-[#1E2227] border border-[#E2DFD7] dark:border-[#2E353F] text-[12px] font-semibold text-[#181A1C] dark:text-[#EAE8E3] hover:border-[#1F3A52] dark:hover:border-[#7A9BB5] transition-colors shadow-xs"
               >
-                <div className="surface p-5 flex flex-col gap-3 hover:border-ink transition-colors h-full">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-[4px] border border-hairline text-ink">
-                      {categoryName(m.account.category)}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-[10px] font-medium px-2 py-0.5 rounded-[4px] border-2",
-                        m.account.status === 0
-                          ? "text-ink border-grass bg-grass/10"
-                          : m.account.status === 1
-                          ? "text-ink border-inkblue bg-inkblue/10"
-                          : "text-ink border-magenta bg-magenta/10"
-                      )}
-                    >
-                      {m.account.status === 0
-                        ? "Open"
-                        : m.account.status === 1
-                        ? "Settled"
-                        : "Cancelled"}
-                    </span>
-                  </div>
-                  <p className="text-[14px] font-semibold text-ink group-hover:text-inkblue transition-colors leading-snug line-clamp-2">
-                    {m.account.question}
-                  </p>
-                  {/* Probability bar */}
-                  <div
-                    className="relative h-1.5 w-full bg-sheet rounded-full overflow-hidden border border-hairline"
-                    aria-hidden
-                  >
-                    <div
-                      className="absolute left-0 top-0 h-full bg-yes rounded-full transition-all duration-500"
-                      style={{ width: `${yesPct}%` }}
-                    />
-                  </div>
-                  <div className="flex justify-between text-xs num font-mono text-ash">
-                    <span>
-                      YES{" "}
-                      <span className="text-ink font-bold bg-yes px-1 rounded-[2px]">
-                        {yesPct}%
-                      </span>
-                    </span>
-                    <span>
-                      NO{" "}
-                      <span className="text-ink font-bold border-2 border-no px-1 rounded-[2px]">
-                        {100 - yesPct}%
-                      </span>
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs num font-mono text-ash border-t border-hairline pt-3">
-                    <span>
-                      Vol{" "}
-                      {formatSol(
-                        m.account.yesPoolLamports + m.account.noPoolLamports
-                      )}{" "}
-                      ◎
-                    </span>
-                    <span>
-                      {m.account.status === 0 && timeUntil(m.account.endTs)}
-                      {m.account.status === 1 &&
-                        (outcomeLabel(m.account.winningOutcome) || "Settled")}
-                      {m.account.status === 2 && "Cancelled"}
-                    </span>
-                  </div>
-                </div>
+                <Compass className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                Browse More Markets
               </Link>
-            );
-          })}
+            </div>
+          )}
         </div>
-      )}
-    </main>
+
+        {/* Content */}
+        {loading && watchedMarkets.length === 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <MarketCardSkeleton key={i} />
+            ))}
+          </div>
+        ) : watchedMarkets.length === 0 ? (
+          /* Empty State */
+          <div className="rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#16181C] p-12 sm:p-16 text-center shadow-xs">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#F1EFEA] dark:bg-[#21252A] border border-[#E2DFD7] dark:border-[#2E353F] mb-5 text-[#1F3A52] dark:text-[#7A9BB5]">
+              <Star className="w-6 h-6 stroke-[1.5]" />
+            </div>
+            <h2
+              className="text-[20px] sm:text-[22px] font-bold text-[#181A1C] dark:text-[#EAE8E3] mb-2"
+              style={{ fontFamily: "var(--font-syne)" }}
+            >
+              Your Watchlist is Empty
+            </h2>
+            <p className="text-[13px] text-[#555D65] dark:text-[#9AA1AA] max-w-md mx-auto mb-6">
+              Click the star icon on any market card or detail page to pin it here for instant monitoring and quick trading access.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/markets"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-[3px] bg-[#1F3A52] dark:bg-[#7A9BB5] text-white dark:text-[#0A0B0D] text-[13px] font-semibold hover:bg-[#162B3D] dark:hover:bg-[#96B5CF] transition-colors shadow-xs"
+              >
+                Explore Markets <ArrowUpRight className="w-4 h-4" />
+              </Link>
+              <ClientWalletButton />
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Filter toolbar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-6">
+              <div className="inline-flex items-center gap-1 p-1 rounded-[3px] bg-[#F1EFEA] dark:bg-[#21252A] border border-[#E2DFD7] dark:border-[#2E353F] self-start">
+                <button
+                  onClick={() => setFilterStatus("all")}
+                  className={`px-3 py-1 rounded-[2px] text-[12px] font-mono font-medium transition-colors cursor-pointer ${
+                    filterStatus === "all"
+                      ? "bg-white dark:bg-[#16181C] text-[#181A1C] dark:text-[#EAE8E3] shadow-xs"
+                      : "text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]"
+                  }`}
+                >
+                  All ({watchedMarkets.length})
+                </button>
+                <button
+                  onClick={() => setFilterStatus("open")}
+                  className={`px-3 py-1 rounded-[2px] text-[12px] font-mono font-medium transition-colors cursor-pointer ${
+                    filterStatus === "open"
+                      ? "bg-white dark:bg-[#16181C] text-[#181A1C] dark:text-[#EAE8E3] shadow-xs"
+                      : "text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]"
+                  }`}
+                >
+                  Open ({openCount})
+                </button>
+                <button
+                  onClick={() => setFilterStatus("settled")}
+                  className={`px-3 py-1 rounded-[2px] text-[12px] font-mono font-medium transition-colors cursor-pointer ${
+                    filterStatus === "settled"
+                      ? "bg-white dark:bg-[#16181C] text-[#181A1C] dark:text-[#EAE8E3] shadow-xs"
+                      : "text-[#555D65] dark:text-[#9AA1AA] hover:text-[#181A1C] dark:hover:text-[#EAE8E3]"
+                  }`}
+                >
+                  Resolved ({settledCount})
+                </button>
+              </div>
+
+              <div className="relative max-w-xs w-full">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#555D65] dark:text-[#9AA1AA]" />
+                <input
+                  type="text"
+                  placeholder="Filter watched markets..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-[12px] font-sans bg-white dark:bg-[#1E2227] border border-[#E2DFD7] dark:border-[#2E353F] rounded-[3px] text-[#181A1C] dark:text-[#EAE8E3] placeholder:text-[#555D65] dark:placeholder:text-[#9AA1AA] focus:outline-none focus:border-[#1F3A52] dark:focus:border-[#7A9BB5]"
+                />
+              </div>
+            </div>
+
+            {/* Grid of Markets */}
+            {filteredMarkets.length === 0 ? (
+              <div className="rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#16181C] p-8 text-center">
+                <p className="text-[13px] text-[#555D65] dark:text-[#9AA1AA]">
+                  No watched markets match your filter criteria.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredMarkets.map((m, idx) => (
+                  <MarketCard
+                    key={m.id}
+                    market={m}
+                    index={idx}
+                    onClick={() => router.push(`/market/${m.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
