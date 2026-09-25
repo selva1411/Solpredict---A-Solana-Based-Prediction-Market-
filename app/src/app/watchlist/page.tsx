@@ -21,7 +21,7 @@ export default async function WatchlistPage() {
   const list = await getMarketList({
     status: "all",
     sort: "newest",
-    limit: 100,
+    limit: 200,
   });
   const initialMarkets = (list.markets ?? []) as unknown as MarketCacheEntry[];
 

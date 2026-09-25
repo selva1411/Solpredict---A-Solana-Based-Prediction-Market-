@@ -223,18 +223,28 @@ export function useMarkets(
   const fetchFromDb = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetch(
-        `/api/markets/cached${includeClosed ? "?status=all" : ""}`
+        `/api/markets/cached?limit=200${includeClosed ? "&status=all" : ""}`
       );
       const data = await res.json();
       if (data.ok && data.markets?.length > 0) {
         const converted = data.markets.map((m: any) =>
           dbRowToMarketAccount(m, program.programId)
         );
-        const sorted = converted.sort(
-          (a: MarketAccount, b: MarketAccount) =>
-            b.account.marketId - a.account.marketId
-        );
-        setMarkets(sorted);
+        setMarkets((prev) => {
+          const map = new Map<string, MarketAccount>();
+          // Keep existing markets so SSR/initialRows are never dropped
+          for (const m of prev) {
+            map.set(m.publicKey.toBase58(), m);
+          }
+          // Overwrite/enrich with fresh DB data
+          for (const m of converted) {
+            map.set(m.publicKey.toBase58(), m);
+          }
+          return Array.from(map.values()).sort(
+            (a: MarketAccount, b: MarketAccount) =>
+              b.account.marketId - a.account.marketId
+          );
+        });
         setError(null);
         return true;
       }

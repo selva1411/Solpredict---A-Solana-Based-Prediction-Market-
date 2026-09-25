@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Star, ArrowUpRight, Search, Compass, SlidersHorizontal } from "lucide-react";
-import { useMarkets } from "@/hooks/useMarkets";
-import { onChainMarketsToUi, type UiMarket } from "@/lib/market-adapter";
+import { useMarkets, dbRowToMarketAccount } from "@/hooks/useMarkets";
+import { onChainMarketsToUi, onChainToUiMarket, type UiMarket } from "@/lib/market-adapter";
+import { ENV } from "@/lib/env";
 import { useAppState } from "@/contexts/AppContext";
 import { MarketCard } from "@/components/MarketCard";
 import { MarketCardSkeleton } from "@/components/StatePanels";
@@ -25,18 +26,75 @@ export default function WatchlistClient({
 
   const [filterStatus, setFilterStatus] = useState<"all" | "open" | "settled">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [extraMarkets, setExtraMarkets] = useState<UiMarket[]>([]);
 
   const uiMarkets: UiMarket[] = useMemo(
     () => onChainMarketsToUi(onChainMarkets ?? []),
     [onChainMarkets]
   );
 
+  // Check if any keys in watchlist are missing from uiMarkets
+  const missingKeys = useMemo(() => {
+    const existing = new Set<string>();
+    for (const m of uiMarkets) {
+      existing.add(m.id);
+      existing.add(String(m.marketId));
+    }
+    for (const m of extraMarkets) {
+      existing.add(m.id);
+      existing.add(String(m.marketId));
+    }
+    return watchlist.filter((k) => !existing.has(k));
+  }, [uiMarkets, extraMarkets, watchlist]);
+
+  // Fetch any missing watched markets individually by key
+  useEffect(() => {
+    if (missingKeys.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      missingKeys.map(async (k) => {
+        try {
+          const res = await fetch(`/api/markets/${k}`);
+          const data = await res.json();
+          if (data.ok && data.market) {
+            return onChainToUiMarket(
+              dbRowToMarketAccount(data.market, ENV.programId)
+            );
+          }
+        } catch {}
+        return null;
+      })
+    ).then((results) => {
+      if (cancelled) return;
+      const valid = results.filter((m): m is UiMarket => m !== null);
+      if (valid.length > 0) {
+        setExtraMarkets((prev) => {
+          const map = new Map<string, UiMarket>();
+          for (const m of prev) map.set(m.id, m);
+          for (const m of valid) map.set(m.id, m);
+          return Array.from(map.values());
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [missingKeys]);
+
+  const allAvailableMarkets = useMemo(() => {
+    if (extraMarkets.length === 0) return uiMarkets;
+    const map = new Map<string, UiMarket>();
+    for (const m of uiMarkets) map.set(m.id, m);
+    for (const m of extraMarkets) map.set(m.id, m);
+    return Array.from(map.values());
+  }, [uiMarkets, extraMarkets]);
+
   // Filter to watched markets
   const watchedMarkets: UiMarket[] = useMemo(() => {
-    return uiMarkets.filter(
+    return allAvailableMarkets.filter(
       (m) => watchlist.includes(m.id) || watchlist.includes(String(m.marketId))
     );
-  }, [uiMarkets, watchlist]);
+  }, [allAvailableMarkets, watchlist]);
 
   // Apply status and search filters
   const filteredMarkets = useMemo(() => {
