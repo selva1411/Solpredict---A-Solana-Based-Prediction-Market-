@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useProgram } from "@/hooks/useProgram";
 import { getConfigPda } from "@/lib/pda";
 import { isDevAuthEnabled } from "@/lib/dev-auth";
@@ -12,6 +12,8 @@ export function useUserRole() {
   const [configExists, setConfigExists] = useState<boolean | null>(null);
 
   const walletKey = wallet?.publicKey?.toBase58() ?? null;
+  const programIdStr = program?.programId?.toBase58() ?? null;
+  const lastResolvedWalletRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +35,7 @@ export function useUserRole() {
         setRole("admin");
         setConfigExists(false);
         setIsLoading(false);
+        lastResolvedWalletRef.current = "dev";
         return;
       }
 
@@ -40,10 +43,15 @@ export function useUserRole() {
         setRole("disconnected");
         setConfigExists(null);
         setIsLoading(false);
+        lastResolvedWalletRef.current = null;
         return;
       }
 
-      setIsLoading(true);
+      // Only show full-screen loading if we haven't resolved this wallet yet
+      if (lastResolvedWalletRef.current !== walletKey) {
+        setIsLoading(true);
+      }
+
       try {
         const configPda = getConfigPda(program.programId);
         const configAcc = await program.account.config.fetch(configPda);
@@ -55,12 +63,14 @@ export function useUserRole() {
           onChainAdmin === walletKey || adminEnvWallets.includes(walletKey);
 
         setRole(isMatch ? "admin" : "user");
+        lastResolvedWalletRef.current = walletKey;
       } catch {
         if (cancelled) return;
         // Bootstrap: config PDA not initialized yet, allow the documented admin wallet.
         setConfigExists(false);
         const isMatch = adminEnvWallets.includes(walletKey);
         setRole(isMatch ? "admin" : "user");
+        lastResolvedWalletRef.current = walletKey;
       } finally {
         if (!cancelled) setIsLoading(false);
       }
@@ -70,7 +80,7 @@ export function useUserRole() {
     return () => {
       cancelled = true;
     };
-  }, [walletKey, program]);
+  }, [walletKey, programIdStr, program]);
 
   return { role, isLoading, configExists };
 }

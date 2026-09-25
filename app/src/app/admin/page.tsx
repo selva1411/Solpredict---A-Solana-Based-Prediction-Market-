@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -195,6 +195,8 @@ function AdminPage() {
   } | null>(null);
   const [adminActivity, setAdminActivity] = useState<AdminActivity[]>([]);
   const [activityLoading, setActivityLoading] = useState<boolean>(false);
+  const hasLoadedOnceRef = useRef<boolean>(false);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [feeBps, setFeeBps] = useState<number>(200);
   const [question, setQuestion] = useState<string>("");
@@ -355,9 +357,11 @@ function AdminPage() {
     });
   };
 
-  const fetchConfigAndMarkets = async () => {
+  const fetchConfigAndMarkets = useCallback(async (isBackground = false) => {
     try {
-      setConfigLoading(true);
+      if (!isBackground && !hasLoadedOnceRef.current) {
+        setConfigLoading(true);
+      }
       const configPda = getConfigPda(program.programId);
 
       try {
@@ -501,7 +505,7 @@ function AdminPage() {
 
       const combinedMarkets = [...onChainMarkets, ...dbMarkets];
       setMarkets(combinedMarkets);
-      fetchAdminActivity(combinedMarkets);
+      fetchAdminActivity(combinedMarkets, isBackground);
 
       try {
         const userPositions = await program.account.userPosition
@@ -528,9 +532,10 @@ function AdminPage() {
     } catch (err) {
       console.error("General fetchConfigAndMarkets error:", err);
     } finally {
+      hasLoadedOnceRef.current = true;
       setConfigLoading(false);
     }
-  };
+  }, [program, wallet]);
 
   /**
    * Load the admin activity / audit trail.
@@ -542,10 +547,12 @@ function AdminPage() {
    * back to the persistent DB audit log (written by approve/reject and other
    * admin API actions).
    */
-  const fetchAdminActivity = async (currentMarkets: Market[]) => {
+  const fetchAdminActivity = async (currentMarkets: Market[], isBackground = false) => {
     if (!wallet?.publicKey) return;
     try {
-      setActivityLoading(true);
+      if (!isBackground && adminActivity.length === 0) {
+        setActivityLoading(true);
+      }
       const items: AdminActivity[] = [];
 
       // 1. Try persistent DB audit log first (instant, 0 RPC calls, never rate-limited)
@@ -688,15 +695,35 @@ function AdminPage() {
     }
   };
 
+  const fetchConfigAndMarketsRef = useRef(fetchConfigAndMarkets);
   useEffect(() => {
-    fetchConfigAndMarkets();
+    fetchConfigAndMarketsRef.current = fetchConfigAndMarkets;
+  }, [fetchConfigAndMarkets]);
+
+  const walletKeyStr = wallet?.publicKey?.toBase58() ?? null;
+  const programIdStr = program?.programId?.toBase58() ?? null;
+
+  useEffect(() => {
+    // Initial fetch (shows skeleton only on the very first mount before data arrives)
+    fetchConfigAndMarketsRef.current?.(!hasLoadedOnceRef.current ? false : true);
+
+    const debouncedBackgroundFetch = () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = setTimeout(() => {
+        if (typeof document !== "undefined" && document.hidden) return;
+        fetchConfigAndMarketsRef.current?.(true);
+      }, 1500);
+    };
+
     let sub: number | null = null;
     try {
-      sub = connection.onLogs(
-        program.programId,
-        () => fetchConfigAndMarkets(),
-        "confirmed"
-      );
+      if (program?.programId) {
+        sub = connection.onLogs(
+          program.programId,
+          () => debouncedBackgroundFetch(),
+          "confirmed"
+        );
+      }
     } catch {
       // WS log subscription fallback
     }
@@ -704,13 +731,14 @@ function AdminPage() {
     // Subscribe to cross-tab activity events (trade, settle, etc.) so the
     // Admin page refreshes the same instant the Home page does.
     const unsubscribeActivity = subscribeAppActivity(() => {
-      fetchConfigAndMarkets();
+      debouncedBackgroundFetch();
     });
 
-    // Periodic poll every 10s to keep stats fresh even if WS/activity events miss.
+    // Periodic poll every 25s to keep stats fresh seamlessly without visual flickering.
     const pollInterval = setInterval(() => {
-      fetchConfigAndMarkets();
-    }, 10_000);
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchConfigAndMarketsRef.current?.(true);
+    }, 25_000);
 
     return () => {
       if (sub !== null) {
@@ -720,8 +748,9 @@ function AdminPage() {
       }
       unsubscribeActivity();
       clearInterval(pollInterval);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
-  }, [wallet, program]);
+  }, [walletKeyStr, programIdStr, connection]);
 
   const handleInitializeConfig = async () => {
     if (!wallet?.publicKey) return;
