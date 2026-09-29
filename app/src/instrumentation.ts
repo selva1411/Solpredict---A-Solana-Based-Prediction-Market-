@@ -23,16 +23,17 @@ export async function register() {
       );
     }
 
-    // Ensure WebSocket server (ports 3001 & 8900) is running
+    // Ensure WebSocket server (ports 3002 & 8900) is running
     if (process.env.NODE_ENV !== "production") {
       try {
         const http = await import("http");
         const { spawn } = await import("child_process");
         const path = await import("path");
+        const wsPort = process.env.WS_PORT || "3002";
 
         const checkWsServer = () => {
           return new Promise<boolean>((resolve) => {
-            const req = http.get("http://127.0.0.1:3001/health", (res) => {
+            const req = http.get(`http://127.0.0.1:${wsPort}/health`, (res) => {
               resolve(res.statusCode === 200);
             });
             req.on("error", () => resolve(false));
@@ -56,7 +57,7 @@ export async function register() {
             }
           );
           child.unref();
-          console.log("[instrumentation] Started background ws-server (ports 3001 & 8900)");
+          console.log(`[instrumentation] Started background ws-server (ports ${wsPort} & 8900)`);
         }
       } catch (e) {
         console.warn("[instrumentation] Could not auto-start ws-server:", e);

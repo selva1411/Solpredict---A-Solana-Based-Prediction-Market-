@@ -19,26 +19,42 @@ export const PRECISION = 1_000_000_000n;
 /** Default liquidity parameter: 100 SOL in lamports. */
 export const DEFAULT_B = 100_000_000_000n;
 
-// ─── Fixed-point math helpers ───────────────────────────────────────────
+/** Scaled ln(2) = ln(2) * PRECISION. */
+export const LN2_SCALED = 693_147_181n;
+/** Half of scaled ln(2) for nearest-integer rounding. */
+export const HALF_LN2_SCALED = LN2_SCALED / 2n;
 
 /**
  * Compute exp(x) for x scaled by PRECISION.
- * Taylor series: sum_{k=0}^{12} x^k / k!
- * Each term: term_n = term_{n-1} * x / (n * PRECISION)
+ * Uses range reduction (x = n * ln(2) + r with |r| <= ln(2)/2) followed by a
+ * 12-term Taylor series on r, and exact 2^n scaling via bit shift.
  *
- * Matches lmsr.rs exp_scaled exactly.
+ * Matches programs/solpredict/src/math/lmsr.rs exactly.
  */
 export function expScaled(x: bigint): bigint {
-  let result = PRECISION;
+  const n = x >= 0n ? (x + HALF_LN2_SCALED) / LN2_SCALED : (x - HALF_LN2_SCALED) / LN2_SCALED;
+  const absN = n < 0n ? -n : n;
+  if (absN > 63n) {
+    throw new Error("MathOverflow: exp input out of bounds (|n| > 63)");
+  }
+
+  const r = x - n * LN2_SCALED;
+
+  let expR = PRECISION;
   let term = PRECISION;
 
   for (let k = 1n; k <= 12n; k++) {
-    term = (term * x) / (k * PRECISION);
-    result = result + term;
+    term = (term * r) / (k * PRECISION);
+    expR = expR + term;
   }
 
-  if (result <= 0n) {
+  if (expR <= 0n) {
     throw new Error("MathOverflow: exp result non-positive");
+  }
+
+  const result = n >= 0n ? expR << n : expR >> -n;
+  if (result === 0n) {
+    throw new Error("MathOverflow: exp result underflow");
   }
 
   return result;

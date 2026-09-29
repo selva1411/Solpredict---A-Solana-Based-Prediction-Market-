@@ -4,8 +4,8 @@ import { randomUUID } from "crypto";
 import { PublicKey, Connection, Logs } from "@solana/web3.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 
-const PORT = parseInt(process.env.WS_PORT || "3001", 10);
-const NEXT_PORT = parseInt(process.env.NEXT_PORT || "3000", 10);
+const PORT = parseInt(process.env.WS_PORT || "3002", 10);
+const NEXT_PORT = parseInt(process.env.NEXT_PORT || "3001", 10);
 const API_BASE = `http://127.0.0.1:${NEXT_PORT}/api`;
 const HEARTBEAT_INTERVAL = 30_000;
 // Slow safety-net poll only. The primary trigger is on-chain program logs

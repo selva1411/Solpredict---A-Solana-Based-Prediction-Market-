@@ -361,7 +361,7 @@ mod tests {
         let price = get_spot_price_yes(yes, no, fee).unwrap();
         assert!(price > 0 && price <= SCALE, "probability must be in (0,1]");
         let cost = get_buy_cost_in(yes, no, 1, fee).unwrap();
-        assert!(cost >= 0, "cost must be non-negative for small buy");
+        assert!(cost > 0, "cost must be positive for small buy");
     }
 
     #[test]

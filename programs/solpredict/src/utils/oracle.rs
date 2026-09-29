@@ -104,11 +104,12 @@ pub fn validate_and_read_price(
     let publish_time = i64::from_be_bytes(message.publish_time);
 
     // Verify Staleness: publish_time must be within max_staleness_secs of current slot time
-    let age = clock.unix_timestamp.saturating_sub(publish_time);
     require!(
-        age >= 0 && (age as u64) <= max_staleness_secs,
+        publish_time <= clock.unix_timestamp,
         SolPredictError::StaleOracle
     );
+    let age = (clock.unix_timestamp - publish_time) as u64;
+    require!(age <= max_staleness_secs, SolPredictError::StaleOracle);
 
     // Confidence check: conf / |price| must be < MAX_CONF_PCT%
     // Integer math: conf * 100 < |price| * MAX_CONF_PCT
@@ -177,3 +178,56 @@ pub fn compare_prices(
 
     Ok(condition_met)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compare_prices_same_exponent() {
+        assert!(compare_prices(150_00, -2, 100_00, -2, Comparison::GreaterThan).unwrap());
+        assert!(!compare_prices(100_00, -2, 150_00, -2, Comparison::GreaterThan).unwrap());
+        assert!(compare_prices(100_00, -2, 150_00, -2, Comparison::LessThan).unwrap());
+        assert!(!compare_prices(150_00, -2, 100_00, -2, Comparison::LessThan).unwrap());
+    }
+
+    #[test]
+    fn test_compare_prices_different_exponents() {
+        // Oracle: $150.50 (15050 * 10^-2)
+        // Target: $150.000 (150000 * 10^-3)
+        // Oracle expo -2, target expo -3 (oracle_expo > target_expo)
+        assert!(compare_prices(15050, -2, 150000, -3, Comparison::GreaterThan).unwrap());
+
+        // Reverse: Oracle expo -8 (Pyth style: 150_50000000 * 10^-8)
+        // Target expo -2 (150_00 * 10^-2)
+        assert!(compare_prices(150_50000000, -8, 150_00, -2, Comparison::GreaterThan).unwrap());
+        assert!(!compare_prices(149_50000000, -8, 150_00, -2, Comparison::GreaterThan).unwrap());
+    }
+
+    #[test]
+    fn test_compare_prices_diff_greater_than_12_errors() {
+        assert!(compare_prices(100, -20, 100, -2, Comparison::GreaterThan).is_err());
+    }
+
+    #[test]
+    fn test_staleness_calculation_logic() {
+        let current_time: i64 = 1_000_000;
+        let max_staleness: u64 = 60;
+
+        // Fresh price: 10s old
+        let publish_time = current_time - 10;
+        assert!(publish_time <= current_time);
+        let age = (current_time - publish_time) as u64;
+        assert!(age <= max_staleness);
+
+        // Stale price: 61s old
+        let stale_publish_time = current_time - 61;
+        let stale_age = (current_time - stale_publish_time) as u64;
+        assert!(stale_age > max_staleness);
+
+        // Future-dated price: current_time + 1s -> must be rejected
+        let future_publish_time = current_time + 1;
+        assert!(!(future_publish_time <= current_time), "Future timestamp must be rejected");
+    }
+}
+

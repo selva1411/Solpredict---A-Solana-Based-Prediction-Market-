@@ -55,6 +55,36 @@ describe("LMSR", () => {
     expect(Number(diff)).toBeLessThan(Number(PRECISION / 50n));
   });
 
+  it("exp(-5.0) ≈ 6,737,947 (matches lmsr.rs)", () => {
+    const result = expScaled(-5n * PRECISION);
+    const expected = 6_737_947n;
+    const diff = result > expected ? result - expected : expected - result;
+    expect(Number(diff)).toBeLessThanOrEqual(100);
+  });
+
+  it("exp(-10.0) ≈ 45,399 (matches lmsr.rs)", () => {
+    const result = expScaled(-10n * PRECISION);
+    const expected = 45_399n;
+    const diff = result > expected ? result - expected : expected - result;
+    expect(Number(diff)).toBeLessThanOrEqual(10);
+  });
+
+  it("exp(-20.0) ≈ 2 (matches lmsr.rs)", () => {
+    const result = expScaled(-20n * PRECISION);
+    expect(result === 1n || result === 2n).toBe(true);
+  });
+
+  it("exp(x) * exp(-x) ≈ 1 round-trip consistency", () => {
+    for (const xVal of [1n, 2n, 5n, 10n]) {
+      const x = xVal * PRECISION;
+      const ePos = expScaled(x);
+      const eNeg = expScaled(-x);
+      const prod = (ePos * eNeg) / PRECISION;
+      const diff = prod > PRECISION ? prod - PRECISION : PRECISION - prod;
+      expect(Number(diff)).toBeLessThanOrEqual(Number(PRECISION / 100n));
+    }
+  });
+
   // ── lnScaled ──────────────────────────────────────────────────────
 
   it("ln(1.0) = 0", () => {

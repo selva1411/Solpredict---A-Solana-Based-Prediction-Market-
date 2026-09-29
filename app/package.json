@@ -11,7 +11,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "ws:start": "npx tsx server/ws-server.ts",
+    "ws:start": "node --env-file=.env.local --import tsx server/ws-server.ts",
     "alerts:start": "node --env-file=.env.local --import tsx server/price-alert-checker.ts",
     "dev:full": "concurrently -n next,ws,alerts -c cyan,green,yellow \"npm run dev\" \"npm run ws:start\" \"npm run alerts:start\"",
     "seed": "npx tsx scripts/seed-cache.ts",

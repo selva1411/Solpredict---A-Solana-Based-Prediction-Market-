@@ -16,28 +16,66 @@ pub const DEFAULT_B: u128 = 100_000_000_000; // 100 SOL
 /// Precision for fixed-point arithmetic (9 decimals matches lamports).
 pub const PRECISION: u128 = 1_000_000_000;
 
+/// Scaled ln(2) = ln(2) * PRECISION.
+pub const LN2_SCALED: i128 = 693_147_181;
+/// Half of scaled ln(2) for nearest-integer rounding.
+pub const HALF_LN2_SCALED: i128 = LN2_SCALED / 2;
+
 /// Compute exp(x) for x scaled by PRECISION.
-/// Uses Taylor series with proper fixed-point scaling: term_n = term_{n-1} * x / (n * PRECISION)
+/// Uses range reduction (x = n * ln(2) + r with |r| <= ln(2)/2) followed by a
+/// 12-term Taylor series on r, and exact 2^n scaling via bit shift.
 pub fn exp_scaled(x: i128) -> Result<u128, SolPredictError> {
-    let mut result: i128 = PRECISION as i128;
+    // Range reduction: decompose x = n * ln2 + r where |r| <= ln2 / 2
+    let n = if x >= 0 {
+        (x + HALF_LN2_SCALED) / LN2_SCALED
+    } else {
+        (x - HALF_LN2_SCALED) / LN2_SCALED
+    };
+
+    // Overflow / underflow guard
+    if n.abs() > 63 {
+        return Err(SolPredictError::MathOverflow);
+    }
+
+    let r = x - n * LN2_SCALED;
+
+    // 12-term Taylor series for exp(r) where |r| <= 0.347
+    let mut exp_r: i128 = PRECISION as i128;
     let mut term: i128 = PRECISION as i128;
 
     for k in 1..=12 {
         term = term
-            .checked_mul(x)
+            .checked_mul(r)
             .ok_or(SolPredictError::MathOverflow)?
-            .checked_div((k as i128).checked_mul(PRECISION as i128).ok_or(SolPredictError::MathOverflow)?)
+            .checked_div(
+                (k as i128)
+                    .checked_mul(PRECISION as i128)
+                    .ok_or(SolPredictError::MathOverflow)?,
+            )
             .ok_or(SolPredictError::MathOverflow)?;
-        result = result
+        exp_r = exp_r
             .checked_add(term)
             .ok_or(SolPredictError::MathOverflow)?;
     }
 
-    if result <= 0 {
+    if exp_r <= 0 {
         return Err(SolPredictError::MathOverflow);
     }
 
-    u128::try_from(result).map_err(|_| SolPredictError::MathOverflow)
+    let exp_r_u128 = exp_r as u128;
+    let result = if n >= 0 {
+        exp_r_u128
+            .checked_shl(n as u32)
+            .ok_or(SolPredictError::MathOverflow)?
+    } else {
+        exp_r_u128 >> ((-n) as u32)
+    };
+
+    if result == 0 {
+        return Err(SolPredictError::MathOverflow);
+    }
+
+    Ok(result)
 }
 
 /// Compute ln(x) for x > 0 scaled by PRECISION.
@@ -328,6 +366,54 @@ mod tests {
             exp_scaled(x),
             Err(SolPredictError::MathOverflow)
         ));
+    }
+
+    #[test]
+    fn test_exp_negative_five() {
+        // exp(-5) in fixed-point: exact is ~6,737,947 (vs diverging Taylor ~150M)
+        let result = exp_scaled(-5 * PRECISION as i128).unwrap();
+        let expected = 6_737_947u128;
+        let diff = if result > expected { result - expected } else { expected - result };
+        assert!(diff <= 100, "exp(-5) off: {} vs {}", result, expected);
+    }
+
+    #[test]
+    fn test_exp_negative_ten() {
+        // exp(-10) in fixed-point: exact is ~45,399 (vs diverging Taylor ~925B)
+        let result = exp_scaled(-10 * PRECISION as i128).unwrap();
+        let expected = 45_399u128;
+        let diff = if result > expected { result - expected } else { expected - result };
+        assert!(diff <= 10, "exp(-10) off: {} vs {}", result, expected);
+    }
+
+    #[test]
+    fn test_exp_negative_twenty() {
+        // exp(-20) in fixed-point: exact is ~2
+        let result = exp_scaled(-20 * PRECISION as i128).unwrap();
+        assert!(result == 2 || result == 1, "exp(-20) expected ~2, got {}", result);
+    }
+
+    #[test]
+    fn test_exp_round_trip_consistency() {
+        // exp(x) * exp(-x) ≈ 1 for various inputs
+        for x_val in [1i128, 2i128, 5i128, 10i128] {
+            let x = x_val * PRECISION as i128;
+            let e_pos = exp_scaled(x).unwrap();
+            let e_neg = exp_scaled(-x).unwrap();
+            let prod = e_pos
+                .checked_mul(e_neg)
+                .unwrap()
+                .checked_div(PRECISION)
+                .unwrap();
+            let diff = if prod > PRECISION { prod - PRECISION } else { PRECISION - prod };
+            assert!(
+                diff <= PRECISION / 100,
+                "Round-trip failed for x={}: prod={}, diff={}",
+                x_val,
+                prod,
+                diff
+            );
+        }
     }
 
     #[test]
