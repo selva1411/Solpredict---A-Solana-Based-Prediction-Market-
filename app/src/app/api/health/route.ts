@@ -63,7 +63,10 @@ export const GET = apiHandler(async (req: NextRequest) => {
     let cursorSlot = 0;
     let slotLag = 0;
     try {
-      const connection = new Connection(RPC_URL, "confirmed");
+      const connection = new Connection(RPC_URL, {
+        commitment: "confirmed",
+        disableRetryOnRateLimit: true,
+      });
       const rpcPromise = (async () => {
         const slot = await connection.getSlot();
         const cursor = await getCursor();

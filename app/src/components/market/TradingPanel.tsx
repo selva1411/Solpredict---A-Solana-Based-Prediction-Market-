@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Wallet } from "lucide-react";
 import { ENV } from "@/lib/env";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
 
 /**
  * TradingPanel — the buy / sell / liquidity panel extracted from MarketDetailClient.
@@ -178,6 +179,34 @@ export function TradingPanel(p: TradingPanelProps) {
     handleCancelOrder,
   } = p;
 
+  const { balanceSol, formattedSol } = useWalletBalance();
+
+  const maxBuyShares = useMemo(() => {
+    if (balanceSol === null || balanceSol <= 0.015) return 0;
+    // Leave 0.01 SOL reserve for transaction gas
+    const availableSol = Math.max(0, balanceSol - 0.01);
+    const price = activeSharePriceSol > 0 ? activeSharePriceSol : 0.01;
+    return Math.max(1, Math.floor(availableSol / price));
+  }, [balanceSol, activeSharePriceSol]);
+
+  const handleMaxBuy = () => {
+    if (maxBuyShares > 0) {
+      setQuantity(maxBuyShares);
+    }
+  };
+
+  const maxLpAmount = useMemo(() => {
+    if (balanceSol === null || balanceSol <= 0.015) return 0.1;
+    const available = Math.max(0.1, Math.floor((balanceSol - 0.01) * 100) / 100);
+    return Number(available.toFixed(2));
+  }, [balanceSol]);
+
+  const handleMaxLp = () => {
+    if (maxLpAmount >= 0.1) {
+      setLpDepositAmount(maxLpAmount);
+    }
+  };
+
   /* ------- closed-market banner ------- */
   if (status !== "Open") {
     return (
@@ -332,6 +361,27 @@ export function TradingPanel(p: TradingPanelProps) {
                   : `${userNoBalance.toFixed(1)} ${noLabel} held`}
               </span>
             </div>
+
+            {/* Wallet available SOL + MAX BUY */}
+            <div className="flex items-center justify-between px-2.5 py-1.5 rounded-[2px] bg-[#F8F7F4] dark:bg-[#21252A] border border-[#E2DFD7]/60 dark:border-[#2A2F36]/60 text-[10px] font-mono">
+              <span className="text-[#555D65] dark:text-[#9AA1AA] flex items-center gap-1.5">
+                <Wallet className="w-3 h-3 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                <span>Wallet:</span>
+                <span className="font-bold text-[#181A1C] dark:text-[#EAE8E3] tabular-nums">
+                  {balanceSol !== null ? `${balanceSol.toFixed(4)} SOL` : "—"}
+                </span>
+              </span>
+              {maxBuyShares > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMaxBuy}
+                  className="font-bold text-[#1F3A52] dark:text-[#7A9BB5] hover:underline cursor-pointer"
+                  title={`Buy max affordable shares (~${maxBuyShares} shares leaving 0.01 SOL for gas)`}
+                >
+                  MAX BUY ({maxBuyShares})
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
@@ -481,6 +531,12 @@ export function TradingPanel(p: TradingPanelProps) {
           {slippageWarning && (
             <div className="px-3 py-2 rounded-[3px] font-mono text-[10px] leading-snug bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] border border-[#ECCDC9] dark:border-[#B43C34]/30 text-[#B43C34] dark:text-[#E57373]">
               ⚠ High price impact — consider a smaller position.
+            </div>
+          )}
+
+          {balanceSol !== null && tradeCost > balanceSol && (
+            <div className="px-3 py-2 rounded-[3px] font-mono text-[10px] leading-snug bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] border border-[#ECCDC9] dark:border-[#B43C34]/30 text-[#B43C34] dark:text-[#E57373]">
+              ⚠ Insufficient SOL: trade requires ~{tradeCost.toFixed(4)} SOL, but wallet has {balanceSol.toFixed(4)} SOL.
             </div>
           )}
 
@@ -901,9 +957,26 @@ export function TradingPanel(p: TradingPanelProps) {
 
           {/* LP Amount */}
           <div className="space-y-1.5">
-            <label className="text-[10px] font-mono font-bold text-[#7F8892] dark:text-[#68707B] uppercase tracking-wider">
-              Liquidity to Deposit (SOL)
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] font-mono font-bold text-[#7F8892] dark:text-[#68707B] uppercase tracking-wider">
+                Liquidity to Deposit (SOL)
+              </label>
+              <div className="flex items-center gap-2 font-mono text-[10px]">
+                <span className="text-[#555D65] dark:text-[#9AA1AA]">
+                  Wallet: <b className="text-[#181A1C] dark:text-[#EAE8E3] tabular-nums">{balanceSol !== null ? `${balanceSol.toFixed(4)} SOL` : "—"}</b>
+                </span>
+                {maxLpAmount >= 0.1 && (
+                  <button
+                    type="button"
+                    onClick={handleMaxLp}
+                    className="font-bold text-[#1F3A52] dark:text-[#7A9BB5] hover:underline cursor-pointer"
+                    title={`Deposit max available balance (~${maxLpAmount} SOL leaving 0.01 SOL for gas)`}
+                  >
+                    MAX ({maxLpAmount})
+                  </button>
+                )}
+              </div>
+            </div>
             <input
               type="number"
               data-testid="lp-amount"
@@ -916,6 +989,12 @@ export function TradingPanel(p: TradingPanelProps) {
               className="w-full bg-white dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-[3px] px-3 py-1.5 text-[#181A1C] dark:text-[#EAE8E3] focus:outline-none focus:border-[#1F3A52] font-mono font-bold text-[14px]"
             />
           </div>
+
+          {balanceSol !== null && lpDepositAmount > balanceSol && (
+            <div className="px-3 py-2 rounded-[3px] font-mono text-[10px] leading-snug bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] border border-[#ECCDC9] dark:border-[#B43C34]/30 text-[#B43C34] dark:text-[#E57373]">
+              ⚠ Deposit amount of {lpDepositAmount} SOL exceeds remaining wallet balance of {balanceSol.toFixed(4)} SOL.
+            </div>
+          )}
 
           {/* LP Impact summary */}
           <div className="bg-[#F8F7F4] dark:bg-[#1A1D21] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] p-3 space-y-2 text-[11px] font-mono text-[#555D65] dark:text-[#9AA1AA]">

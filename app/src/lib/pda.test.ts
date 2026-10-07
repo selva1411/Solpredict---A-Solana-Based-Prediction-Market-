@@ -12,6 +12,8 @@ import {
   getOrderPda,
   getProposalPda,
   getProposalVaultPda,
+  getLiquidityPositionPda,
+  getLpRewardVaultPda,
 } from "./pda";
 
 const MOCK_PROGRAM_ID = new PublicKey(
@@ -120,6 +122,26 @@ describe("PDA Derivations against Rust Seeds Spec", () => {
     const pda = getProposalVaultPda(proposalId, MOCK_PROGRAM_ID);
     const [expected] = PublicKey.findProgramAddressSync(
       [Buffer.from("proposal_vault"), proposalId.toArrayLike(Buffer, "le", 8)],
+      MOCK_PROGRAM_ID
+    );
+    expect(pda.toBase58()).toBe(expected.toBase58());
+  });
+
+  it("derives liquidity position PDA with 'lp' + marketPda + providerPubkey", () => {
+    const marketPda = getMarketPda(new anchor.BN(1), MOCK_PROGRAM_ID);
+    const pda = getLiquidityPositionPda(marketPda, MOCK_USER, MOCK_PROGRAM_ID);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [Buffer.from("lp"), marketPda.toBuffer(), MOCK_USER.toBuffer()],
+      MOCK_PROGRAM_ID
+    );
+    expect(pda.toBase58()).toBe(expected.toBase58());
+  });
+
+  it("derives LP reward vault PDA with 'lp_reward_vault' + marketPda", () => {
+    const marketPda = getMarketPda(new anchor.BN(1), MOCK_PROGRAM_ID);
+    const pda = getLpRewardVaultPda(marketPda, MOCK_PROGRAM_ID);
+    const [expected] = PublicKey.findProgramAddressSync(
+      [Buffer.from("lp_reward_vault"), marketPda.toBuffer()],
       MOCK_PROGRAM_ID
     );
     expect(pda.toBase58()).toBe(expected.toBase58());

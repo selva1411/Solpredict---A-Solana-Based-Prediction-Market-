@@ -153,7 +153,10 @@ async function fetchOnChainAdmin(): Promise<string | null> {
   }
 
   try {
-    const conn = new Connection(ENV.serverRpcUrl, "confirmed");
+    const conn = new Connection(ENV.serverRpcUrl, {
+      commitment: "confirmed",
+      disableRetryOnRateLimit: true,
+    });
     const configPda = getConfigPda(PROGRAM_ID);
     const timeoutPromise = new Promise<null>((_, reject) =>
       setTimeout(() => reject(new Error("RPC timeout")), 2000)

@@ -22,6 +22,15 @@ pub struct LiquidityPosition {
     pub updated_at: i64,
     /// PDA bump
     pub bump: u8,
+
+    /// Snapshot of market.cumulative_fee_per_lp at the last
+    /// add_liquidity, remove_liquidity, or claim_lp_rewards call.
+    pub fee_debt: u128,
+
+    /// Rewards snapshotted into this position but not yet transferred.
+    /// Accumulates on every add/remove call so partial withdrawals
+    /// don't forfeit earned fees.
+    pub lp_rewards_earned: u64,
 }
 
 impl LiquidityPosition {
@@ -34,7 +43,9 @@ impl LiquidityPosition {
         + 8                     // total_lamports_deposited
         + 8                     // created_at
         + 8                     // updated_at
-        + 1;                    // bump
+        + 1                     // bump
+        + 16                    // fee_debt (u128)
+        + 8;                    // lp_rewards_earned (u64)
 }
 
 /// Emergency pause state — singleton account.

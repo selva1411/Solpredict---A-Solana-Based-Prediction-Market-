@@ -192,6 +192,11 @@ pub mod solpredict {
         instructions::remove_liquidity::handler(ctx, lp_tokens_to_burn)
     }
 
+    /// Claim accumulated LP fee rewards.
+    pub fn claim_lp_rewards(ctx: Context<ClaimLpRewards>) -> Result<()> {
+        instructions::claim_lp_rewards::handler(ctx)
+    }
+
     /// Emergency withdrawal of funds from a settled or paused market (admin-only).
     pub fn emergency_withdraw(
         ctx: Context<EmergencyWithdrawAccounts>,

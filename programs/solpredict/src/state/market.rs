@@ -152,48 +152,27 @@ pub struct Market {
 
     /// Reentrancy protection lock.
     pub reentrancy_lock: ReentrancyLock,
+
+    /// Lamports currently earmarked for LP rewards (not yet claimed).
+    /// Funded by LP_FEE_SHARE_BPS of every trade fee. Sits inside the lp_reward_vault.
+    pub lp_fee_pool: u64,
+
+    /// Sum of all lp_tokens across every active LiquidityPosition for this market.
+    /// Maintained by add_liquidity (+=) and remove_liquidity (-=).
+    pub total_lp_tokens: u64,
+
+    /// Global fee-per-LP-token accumulator, scaled by PRECISION (1e9).
+    /// Increases monotonically with every trade that carries a fee.
+    /// Stored as u128 to avoid overflow over a market's lifetime.
+    pub cumulative_fee_per_lp: u128,
 }
 
 impl Market {
-    /// Exact space calculation.
-    /// 8  discriminator
-    /// 8  market_id (u64)
-    /// 32 authority (Pubkey)
-    /// 4 + MAX_QUESTION_LEN  question (String: 4-byte length prefix + content)
-    /// 4 + MAX_DESCRIPTION_LEN  description
-    /// 1  category (enum u8)
-    /// 32 oracle_feed_id ([u8; 32])
-    /// 8  target_price (i64)
-    /// 4  target_expo (i32)
-    /// 1  comparison (enum u8)
-    /// 8  end_ts (i64)
-    /// 8  resolve_ts (i64)
-    /// 1  status (enum u8)
-    /// 1  winning_outcome (enum u8)
-    /// 32 yes_mint (Pubkey)
-    /// 32 no_mint (Pubkey)
-    /// 8  yes_pool_lamports (u64)
-    /// 8  no_pool_lamports (u64)
-    /// 8  yes_supply (u64)
-    /// 8  no_supply (u64)
-    /// 8  total_payout_pool (u64)
-    /// 8  fee_collected (u64)
-    /// 1  fee_withdrawn (bool)
-    /// 8  total_claimed (u64)
-    /// 8  settled_price (i64)
-    /// 4  settled_expo (i32)
-    /// 8  settled_at (i64)
-    /// 8  share_price_lamports (u64)
-    /// 2  fee_bps (u16)
-    /// 1  bump (u8)
-    /// 1  treasury_bump (u8)
-    /// 1  reentrancy_lock.locked (u8)
-    /// 32 reentrancy_lock.locker (Pubkey)
     pub const LEN: usize = 8   // discriminator
         + 8                     // market_id
         + 32                    // authority
-        + (4 + MAX_QUESTION_LEN)    // question
-        + (4 + MAX_DESCRIPTION_LEN) // description
+        + (4 + MAX_QUESTION_LEN)
+        + (4 + MAX_DESCRIPTION_LEN)
         + 1                     // category
         + 32                    // oracle_feed_id
         + 8                     // target_price
@@ -221,5 +200,8 @@ impl Market {
         + 1                     // bump
         + 1                     // treasury_bump
         + 1                     // reentrancy_lock.locked
-        + 32;                   // reentrancy_lock.locker
+        + 32                    // reentrancy_lock.locker
+        + 8                     // lp_fee_pool
+        + 8                     // total_lp_tokens
+        + 16;                   // cumulative_fee_per_lp (u128)
 }

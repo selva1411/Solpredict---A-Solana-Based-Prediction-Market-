@@ -118,6 +118,13 @@ export function getFriendlyErrorMessage(err: unknown): string {
   if (msg.includes("custom program error: 0x1776")) {
     return ERROR_MAP.MarketNotSettled;
   }
+  if (
+    msg.includes("custom program error: 0x1004") ||
+    msg.includes("DeclaredProgramIdMismatch") ||
+    msg.includes("Error Number: 4100")
+  ) {
+    return "Contract upgrade required: The deployed program ID does not match the client program ID.";
+  }
 
   if (
     msg.includes("Attempt to debit an account") ||
@@ -131,6 +138,14 @@ export function getFriendlyErrorMessage(err: unknown): string {
   }
 
   // Check common anchor/wallet adapter errors
+  if (
+    msg.includes("AccountNotInitialized") ||
+    msg.includes("0xbc4") ||
+    msg.includes("Error Number: 3012")
+  ) {
+    return "This market account has not been initialized on-chain yet.";
+  }
+
   if (msg.includes("User rejected the request")) {
     return "Transaction signature rejected by user.";
   }

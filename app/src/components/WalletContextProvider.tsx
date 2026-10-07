@@ -29,12 +29,14 @@ const queryClient = new QueryClient({
 if (typeof window !== "undefined") {
   const origError = console.error;
   console.error = (...args: unknown[]) => {
+    const msg = typeof args[0] === "string" ? args[0] : "";
     if (
-      typeof args[0] === "string" &&
-      args[0].includes("ws error:") &&
-      (args[1] === undefined || args[1] === "undefined" || !args[1])
+      (msg.includes("ws error:") &&
+        (args[1] === undefined || args[1] === "undefined" || !args[1])) ||
+      msg.includes("Connection rate limits exceeded") ||
+      msg.includes("429 :")
     ) {
-      // Benign @solana/web3.js websocket retry log; suppress from triggering Next.js dev overlay
+      // Benign @solana/web3.js retry / rate limit log; suppress from triggering Next.js dev overlay
       return;
     }
     origError.apply(console, args);
@@ -57,7 +59,7 @@ export const WalletContextProvider: FC<{ children: ReactNode }> = ({
       config={{
         ...(wsEndpoint ? { wsEndpoint } : {}),
         commitment: "confirmed",
-        disableRetryOnRateLimit: true,
+        disableRetryOnRateLimit: false,
       }}
     >
       <WalletProvider wallets={wallets} autoConnect>

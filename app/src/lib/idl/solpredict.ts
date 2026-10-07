@@ -617,6 +617,27 @@ export type Solpredict = {
           };
         },
         {
+          name: "lpRewardVault";
+          docs: [
+            "LP reward vault — receives LP_FEE_SHARE_BPS of every trade fee."
+          ];
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  108, 112, 95, 114, 101, 119, 97, 114, 100, 95, 118, 97, 117, 108, 116
+                ];
+              },
+              {
+                kind: "account";
+                path: "market";
+              }
+            ];
+          };
+        },
+        {
           name: "yesMint";
           docs: [
             "YES token mint — may or may not be the one we mint to (depends on side)."
@@ -1494,6 +1515,94 @@ export type Solpredict = {
         {
           name: "tokenProgram";
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+        },
+        {
+          name: "systemProgram";
+          address: "11111111111111111111111111111111";
+        }
+      ];
+      args: [];
+    },
+    {
+      name: "claimLpRewards";
+      docs: [
+        "Claim accumulated LP fee rewards from the market lp_reward_vault."
+      ];
+      discriminator: [130, 185, 69, 158, 54, 47, 70, 79];
+      accounts: [
+        {
+          name: "provider";
+          writable: true;
+          signer: true;
+        },
+        {
+          name: "market";
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [109, 97, 114, 107, 101, 116];
+              },
+              {
+                kind: "account";
+                path: "market.market_id";
+                account: "market";
+              }
+            ];
+          };
+        },
+        {
+          name: "liquidityPosition";
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [108, 112];
+              },
+              {
+                kind: "account";
+                path: "market";
+              },
+              {
+                kind: "account";
+                path: "provider";
+              }
+            ];
+          };
+        },
+        {
+          name: "lpRewardVault";
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  108,
+                  112,
+                  95,
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ];
+              },
+              {
+                kind: "account";
+                path: "market";
+              }
+            ];
+          };
         },
         {
           name: "systemProgram";
@@ -2865,6 +2974,27 @@ export type Solpredict = {
           };
         },
         {
+          name: "lpRewardVault";
+          docs: [
+            "LP reward vault — receives LP_FEE_SHARE_BPS of every trade fee."
+          ];
+          writable: true;
+          pda: {
+            seeds: [
+              {
+                kind: "const";
+                value: [
+                  108, 112, 95, 114, 101, 119, 97, 114, 100, 95, 118, 97, 117, 108, 116
+                ];
+              },
+              {
+                kind: "account";
+                path: "market";
+              }
+            ];
+          };
+        },
+        {
           name: "yesMint";
           writable: true;
           pda: {
@@ -3518,6 +3648,10 @@ export type Solpredict = {
     {
       name: "liquidityRemoved";
       discriminator: [225, 105, 216, 39, 124, 116, 169, 189];
+    },
+    {
+      name: "lpRewardsClaimed";
+      discriminator: [95, 228, 161, 104, 131, 234, 115, 10];
     },
     {
       name: "marketCancelled";
@@ -4242,6 +4376,16 @@ export type Solpredict = {
             name: "bump";
             docs: ["PDA bump"];
             type: "u8";
+          },
+          {
+            name: "feeDebt";
+            docs: ["Snapshot of market cumulative_fee_per_lp"];
+            type: "u128";
+          },
+          {
+            name: "lpRewardsEarned";
+            docs: ["Rewards snapshotted into this position but not yet transferred"];
+            type: "u64";
           }
         ];
       };
@@ -4270,6 +4414,27 @@ export type Solpredict = {
           },
           {
             name: "lpTokensBurned";
+            type: "u64";
+          }
+        ];
+      };
+    },
+    {
+      name: "lpRewardsClaimed";
+      docs: ["Emitted when an LP claims trading fee rewards."];
+      type: {
+        kind: "struct";
+        fields: [
+          {
+            name: "market";
+            type: "pubkey";
+          },
+          {
+            name: "provider";
+            type: "pubkey";
+          },
+          {
+            name: "rewardLamports";
             type: "u64";
           }
         ];
@@ -4488,6 +4653,27 @@ export type Solpredict = {
                 name: "reentrancyLock";
               };
             };
+          },
+          {
+            name: "lpFeePool";
+            docs: [
+              "Lamports currently earmarked for LP rewards (not yet claimed)."
+            ];
+            type: "u64";
+          },
+          {
+            name: "totalLpTokens";
+            docs: [
+              "Sum of all lp_tokens across every active LiquidityPosition for this market."
+            ];
+            type: "u64";
+          },
+          {
+            name: "cumulativeFeePerLp";
+            docs: [
+              "Global fee-per-LP-token accumulator, scaled by PRECISION (1e9)."
+            ];
+            type: "u128";
           }
         ];
       };

@@ -55,3 +55,5 @@ pub use propose_market::*;
 pub use approve_market::*;
 pub use reject_market::*;
 pub use dispute_settlement::*;
+pub mod claim_lp_rewards;
+pub use claim_lp_rewards::*;

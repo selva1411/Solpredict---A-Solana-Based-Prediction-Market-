@@ -22,6 +22,9 @@ import {
 } from "lucide-react";
 import { useUserRole } from "@/hooks/useUserRole";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
+import { RotateCw, Wallet } from "lucide-react";
 
 const DRAWER_GROUPS = [
   {
@@ -101,6 +104,19 @@ export function MobileNav() {
   const pathname = usePathname();
   const { theme, setTheme, mounted } = useTheme();
   const currentTheme = mounted ? theme : "light";
+  const { publicKey } = useWallet();
+  const { balanceSol, formattedSol, loading: balanceLoading, refetch: refetchBalance } = useWalletBalance();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onManualRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refetchBalance();
+    } finally {
+      setTimeout(() => setRefreshing(false), 400);
+    }
+  };
 
   const isActive = (href: string) =>
     href === "/"
@@ -155,6 +171,34 @@ export function MobileNav() {
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Connected Wallet & Remaining SOL Balance Badge */}
+              {publicKey && (
+                <div className="my-3 p-3 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#21252A] space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#68707B]">
+                    <div className="flex items-center gap-1.5 font-bold text-[#181A1C] dark:text-[#EAE8E3]">
+                      <Wallet className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
+                      <span>{publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={onManualRefresh}
+                      className={`p-1 hover:text-[#181A1C] dark:hover:text-[#EAE8E3] cursor-pointer ${
+                        refreshing || balanceLoading ? "animate-spin text-[#1F3A52] dark:text-[#7A9BB5]" : ""
+                      }`}
+                      title="Refresh SOL balance"
+                    >
+                      <RotateCw className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="flex items-baseline justify-between pt-1 border-t border-[#E2DFD7]/60 dark:border-[#2A2F36]/60">
+                    <span className="text-[11px] font-mono text-[#555D65] dark:text-[#9AA1AA]">Remaining SOL:</span>
+                    <span className="font-mono font-bold text-[14px] text-[#181A1C] dark:text-[#EAE8E3] tabular-nums">
+                      {balanceSol !== null ? `${balanceSol.toFixed(4)} SOL` : "—"}
+                    </span>
+                  </div>
+                </div>
+              )}
 
               {/* Navigation groups */}
               <div className="flex-1 py-4 space-y-5">

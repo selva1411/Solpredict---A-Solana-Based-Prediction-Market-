@@ -60,7 +60,10 @@ export const GET = apiHandler(async (req: NextRequest) => {
     // Live on-chain balance via RPC
     let onChainBalanceLamports: number | null = null;
     try {
-      const conn = new Connection(RPC_URL, "confirmed");
+      const conn = new Connection(RPC_URL, {
+        commitment: "confirmed",
+        disableRetryOnRateLimit: true,
+      });
       onChainBalanceLamports = await conn.getBalance(
         new PublicKey(overview.treasuryWallet)
       );

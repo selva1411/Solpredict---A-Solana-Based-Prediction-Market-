@@ -22,16 +22,29 @@ const CACHEABLE_METHODS = new Set([
   "getVersion",
   "getHealth",
   "getEpochInfo",
+  "getProgramAccounts",
+  "getTokenAccountsByOwner",
+  "getTokenAccountBalance",
+  "getFeeForMessage",
+  "getRecentPrioritizationFees",
+  "getSignaturesForAddress",
+  "getTransaction",
 ]);
 
 const LOCAL_VALIDATOR = process.env.LOCALNET_RPC_URL || "http://127.0.0.1:8899";
-const FALLBACK_RPCS = [
-  process.env.HELIUS_RPC_URL,
-  process.env.NEXT_PUBLIC_RPC_URL?.startsWith("http") && !process.env.NEXT_PUBLIC_RPC_URL.includes("localhost")
-    ? process.env.NEXT_PUBLIC_RPC_URL
-    : undefined,
-  "https://api.devnet.solana.com",
-].filter((url): url is string => Boolean(url && !url.includes("localhost")));
+const FALLBACK_RPCS = Array.from(
+  new Set(
+    [
+      process.env.HELIUS_RPC_URL,
+      process.env.NEXT_PUBLIC_RPC_URL?.startsWith("http") &&
+      !process.env.NEXT_PUBLIC_RPC_URL.includes("localhost") &&
+      !process.env.NEXT_PUBLIC_RPC_URL.includes("/api/rpc")
+        ? process.env.NEXT_PUBLIC_RPC_URL
+        : undefined,
+      "https://api.devnet.solana.com",
+    ].filter((url): url is string => Boolean(url && !url.includes("localhost")))
+  )
+);
 
 async function tryFetchRpc(url: string, body: string, timeoutMs = 2500): Promise<Response> {
   const controller = new AbortController();
@@ -113,6 +126,19 @@ export async function POST(req: NextRequest) {
       }
       if (res.ok) {
         const json = await res.json();
+        if (
+          json?.error?.code === 429 ||
+          String(json?.error?.message).toLowerCase().includes("rate limit")
+        ) {
+          if (cacheKey && rpcCache.has(cacheKey)) {
+            const stale = rpcCache.get(cacheKey)!.response as Record<string, unknown>;
+            return NextResponse.json({
+              ...stale,
+              id: rpcReq.id ?? (stale.id as unknown),
+            });
+          }
+          continue; // Try next fallback
+        }
         if (cacheKey) {
           rpcCache.set(cacheKey, { response: json, timestamp: Date.now() });
         }

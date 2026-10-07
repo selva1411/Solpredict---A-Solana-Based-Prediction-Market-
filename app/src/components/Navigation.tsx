@@ -15,6 +15,7 @@ import { keys } from "@/lib/api/keys";
 import { signUserProof, userFetch } from "@/lib/user-client";
 import { Settings, Star, Bell, Sun, Moon } from "lucide-react";
 import { MobileNav } from "@/components/MobileNav";
+import { WalletBalanceBadge } from "@/components/WalletBalanceBadge";
 
 const NAV_ITEMS = [
   { href: "/markets",    label: "Markets"   },
@@ -271,6 +272,7 @@ export function Navigation() {
           <ThemeSwitch />
           <NotificationBell />
           <AirdropSolButton />
+          <WalletBalanceBadge />
           <ClientWalletButton />
           <MobileNav />
         </div>

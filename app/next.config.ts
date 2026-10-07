@@ -62,6 +62,11 @@ const nextConfig: NextConfig = {
         destination: "/admin?section=users",
         permanent: false,
       },
+      {
+        source: "/markets/:id",
+        destination: "/market/:id",
+        permanent: false,
+      },
     ];
   },
   // Improve chunk loading reliability

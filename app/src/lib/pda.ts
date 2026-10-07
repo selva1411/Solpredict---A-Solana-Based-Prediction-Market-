@@ -148,3 +148,26 @@ export function getProposalVaultPda(
   );
   return pda;
 }
+
+export function getLiquidityPositionPda(
+  marketPda: PublicKey,
+  providerPubkey: PublicKey,
+  programId: PublicKey
+): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("lp"), marketPda.toBuffer(), providerPubkey.toBuffer()],
+    programId
+  );
+  return pda;
+}
+
+export function getLpRewardVaultPda(
+  marketPda: PublicKey,
+  programId: PublicKey
+): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("lp_reward_vault"), marketPda.toBuffer()],
+    programId
+  );
+  return pda;
+}

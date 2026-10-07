@@ -63,6 +63,8 @@ export const marketsCache = pgTable(
     tags: text("tags").array(),
     viewCount: integer("view_count").default(0),
     watchlistCount: integer("watchlist_count").default(0),
+    lpFeePoolLamports: bigint("lp_fee_pool_lamports", { mode: "number" }).default(0),
+    totalLpTokens: bigint("total_lp_tokens", { mode: "number" }).default(0),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
@@ -214,6 +216,9 @@ export const liquidityPositions = pgTable(
     feesEarned: decimal("fees_earned", { precision: 18, scale: 9 }).default(
       "0"
     ),
+    lpRewardsEarned: bigint("lp_rewards_earned", { mode: "number" }).default(0),
+    lpRewardsClaimed: bigint("lp_rewards_claimed", { mode: "number" }).default(0),
+    feeDebt: decimal("fee_debt", { precision: 39, scale: 0 }).default("0"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },

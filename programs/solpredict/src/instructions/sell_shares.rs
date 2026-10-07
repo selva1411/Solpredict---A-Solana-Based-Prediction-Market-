@@ -28,34 +28,25 @@ pub struct SellShares<'info> {
     )]
     pub treasury: SystemAccount<'info>,
 
+    /// LP reward vault — receives LP_FEE_SHARE_BPS of the sell-side fee.
+    /// CHECK: Validated by seeds constraint.
     #[account(
         mut,
-        seeds = [YES_MINT_SEED, market.key().as_ref()],
+        seeds = [LP_REWARD_VAULT_SEED, market.key().as_ref()],
         bump,
     )]
+    pub lp_reward_vault: SystemAccount<'info>,
+
+    #[account(mut, seeds = [YES_MINT_SEED, market.key().as_ref()], bump)]
     pub yes_mint: Account<'info, Mint>,
 
-    #[account(
-        mut,
-        seeds = [NO_MINT_SEED, market.key().as_ref()],
-        bump,
-    )]
+    #[account(mut, seeds = [NO_MINT_SEED, market.key().as_ref()], bump)]
     pub no_mint: Account<'info, Mint>,
 
-    #[account(
-        init_if_needed,
-        payer = seller,
-        associated_token::mint = yes_mint,
-        associated_token::authority = seller,
-    )]
+    #[account(init_if_needed, payer = seller, associated_token::mint = yes_mint, associated_token::authority = seller)]
     pub seller_yes_ata: Account<'info, TokenAccount>,
 
-    #[account(
-        init_if_needed,
-        payer = seller,
-        associated_token::mint = no_mint,
-        associated_token::authority = seller,
-    )]
+    #[account(init_if_needed, payer = seller, associated_token::mint = no_mint, associated_token::authority = seller)]
     pub seller_no_ata: Account<'info, TokenAccount>,
 
     #[account(
@@ -67,18 +58,12 @@ pub struct SellShares<'info> {
     )]
     pub user_position: Account<'info, UserPosition>,
 
+    #[account(seeds = [PAUSE_SEED], bump = emergency_pause.bump)]
+    pub emergency_pause: Option<Account<'info, EmergencyPause>>,
+
     pub token_program: Program<'info, Token>,
     pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
-
-    /// Optional emergency-pause account. When present and paused, trading is
-    /// halted. Pinned to the canonical PDA so a caller cannot bypass the
-    /// pause by omitting or substituting an unrelated account.
-    #[account(
-        seeds = [PAUSE_SEED],
-        bump = emergency_pause.bump,
-    )]
-    pub emergency_pause: Option<Account<'info, EmergencyPause>>,
 }
 
 pub fn handler(
@@ -90,12 +75,10 @@ pub fn handler(
     check_not_paused(&ctx.accounts.emergency_pause)?;
 
     let market = &ctx.accounts.market;
-
     require!(market.status == MarketStatus::Open, SolPredictError::MarketNotOpen);
 
     let clock = Clock::get()?;
     require!(clock.unix_timestamp < market.end_ts, SolPredictError::MarketExpired);
-
     require!(quantity > 0 && quantity <= MAX_SHARES_PER_TX, SolPredictError::InvalidQuantity);
 
     let mint_amount = (quantity as u128)
@@ -107,36 +90,42 @@ pub fn handler(
         Side::Yes => (ctx.accounts.seller_yes_ata.amount, true),
         Side::No  => (ctx.accounts.seller_no_ata.amount, false),
     };
-
     require!(ata_amount >= mint_amount_u64, SolPredictError::InsufficientShares);
 
     let pool_yes = market.yes_pool_lamports as u128;
-    let pool_no = market.no_pool_lamports as u128;
-    let dy_in = (quantity as u128) * (market.share_price_lamports as u128);
-    let fee_bps = market.fee_bps;
+    let pool_no  = market.no_pool_lamports as u128;
+    let dy_in    = (quantity as u128) * (market.share_price_lamports as u128);
+    let fee_bps  = market.fee_bps;
     let treasury_balance = ctx.accounts.treasury.lamports();
-    let market_id = market.market_id;
+    let market_id  = market.market_id;
     let seller_key = ctx.accounts.seller.key();
 
-    let refund_u128 = if dy_in == 0 || pool_yes == 0 || pool_no == 0 {
-        // Flat path charges the fee out of the seller's proceeds, mirroring
-        // the curve's sell quote (was previously fee-free).
-        payout_math::calculate_proceeds_with_fee(quantity, market.share_price_lamports, fee_bps)?
+    // Compute gross refund (fee-free) then split fee between admin and LPs.
+    let refund_gross_u128 = if dy_in == 0 || pool_yes == 0 || pool_no == 0 {
+        (quantity as u128).checked_mul(market.share_price_lamports as u128).ok_or(SolPredictError::MathOverflow)?
     } else {
         match is_yes {
-            true => amm_math::get_sell_amount_out(pool_yes, pool_no, dy_in, fee_bps),
-            false => amm_math::get_sell_amount_out(pool_no, pool_yes, dy_in, fee_bps),
+            true  => amm_math::get_sell_amount_out(pool_yes, pool_no, dy_in, 0),
+            false => amm_math::get_sell_amount_out(pool_no, pool_yes, dy_in, 0),
         }.map_err(|_| error!(SolPredictError::MathOverflow))?
     };
-    let refund = u64::try_from(refund_u128)
+
+    let total_sell_fee = (refund_gross_u128)
+        .checked_mul(fee_bps as u128).ok_or(SolPredictError::MathOverflow)?
+        .checked_div(10_000).ok_or(SolPredictError::MathOverflow)? as u64;
+
+    let lp_fee = (total_sell_fee as u128)
+        .checked_mul(LP_FEE_SHARE_BPS as u128).ok_or(SolPredictError::MathOverflow)?
+        .checked_div(10_000).ok_or(SolPredictError::MathOverflow)? as u64;
+
+    let refund_net_u128 = refund_gross_u128
+        .checked_sub(total_sell_fee as u128).ok_or(SolPredictError::MathOverflow)?;
+
+    let refund = u64::try_from(refund_net_u128)
         .unwrap_or(u64::MAX)
         .min(treasury_balance.saturating_sub(1));
 
     require!(refund > 0, SolPredictError::MathOverflow);
-
-    // Slippage protection: reject the trade if the actual proceeds fall below
-    // the seller's stated minimum, preventing front-running between simulation
-    // and execution.
     require!(refund >= min_proceeds_lamports, SolPredictError::SlippageExceeded);
 
     let (mint_info, ata_info) = if is_yes {
@@ -145,83 +134,74 @@ pub fn handler(
         (ctx.accounts.no_mint.to_account_info(), ctx.accounts.seller_no_ata.to_account_info())
     };
 
-    // Hold the market's reentrancy lock BEFORE any funds move. Previously the
-    // lock was acquired after the refund transfer left the treasury.
     ctx.accounts.market.reentrancy_lock.acquire(&crate::ID)?;
 
     token::burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Burn {
-                mint: mint_info,
-                from: ata_info,
-                authority: ctx.accounts.seller.to_account_info(),
-            },
+            Burn { mint: mint_info, from: ata_info, authority: ctx.accounts.seller.to_account_info() },
         ),
         mint_amount_u64,
     )?;
 
-    let market_key = ctx.accounts.market.key();
+    let market_key   = ctx.accounts.market.key();
     let treasury_bump = ctx.accounts.market.treasury_bump;
     let seeds = &[TREASURY_SEED, market_key.as_ref(), &[treasury_bump]];
     let signer_seeds = &[&seeds[..]];
 
+    // Pay seller net refund from treasury.
     system_program::transfer(
         CpiContext::new_with_signer(
             ctx.accounts.system_program.to_account_info(),
-            system_program::Transfer {
-                from: ctx.accounts.treasury.to_account_info(),
-                to: ctx.accounts.seller.to_account_info(),
-            },
+            system_program::Transfer { from: ctx.accounts.treasury.to_account_info(), to: ctx.accounts.seller.to_account_info() },
             signer_seeds,
         ),
         refund,
     )?;
 
+    // Move LP fee from treasury to lp_reward_vault.
+    if lp_fee > 0 {
+        system_program::transfer(
+            CpiContext::new_with_signer(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer { from: ctx.accounts.treasury.to_account_info(), to: ctx.accounts.lp_reward_vault.to_account_info() },
+                signer_seeds,
+            ),
+            lp_fee,
+        )?;
+    }
+
     let market = &mut ctx.accounts.market;
     if is_yes {
-        market.yes_pool_lamports = market
-            .yes_pool_lamports
-            .checked_sub(refund)
-            .ok_or(SolPredictError::MathOverflow)?;
-        market.yes_supply = market
-            .yes_supply
-            .checked_sub(mint_amount_u64)
-            .ok_or(SolPredictError::MathOverflow)?;
+        market.yes_pool_lamports = market.yes_pool_lamports.saturating_sub(refund);
+        market.yes_supply        = market.yes_supply.saturating_sub(mint_amount_u64);
     } else {
-        market.no_pool_lamports = market
-            .no_pool_lamports
-            .checked_sub(refund)
-            .ok_or(SolPredictError::MathOverflow)?;
-        market.no_supply = market
-            .no_supply
-            .checked_sub(mint_amount_u64)
-            .ok_or(SolPredictError::MathOverflow)?;
+        market.no_pool_lamports = market.no_pool_lamports.saturating_sub(refund);
+        market.no_supply        = market.no_supply.saturating_sub(mint_amount_u64);
+    }
+
+    // Update global LP reward accumulator.
+    if lp_fee > 0 {
+        market.lp_fee_pool = market.lp_fee_pool.checked_add(lp_fee).ok_or(SolPredictError::MathOverflow)?;
+
+        if market.total_lp_tokens > 0 {
+            let delta = (lp_fee as u128)
+                .checked_mul(PRECISION as u128).ok_or(SolPredictError::MathOverflow)?
+                .checked_div(market.total_lp_tokens as u128).ok_or(SolPredictError::MathOverflow)?;
+
+            market.cumulative_fee_per_lp = market.cumulative_fee_per_lp
+                .checked_add(delta).ok_or(SolPredictError::MathOverflow)?;
+        }
     }
 
     let position = &mut ctx.accounts.user_position;
-    if is_yes {
-        position.yes_amount = position
-            .yes_amount
-            .checked_sub(mint_amount_u64)
-            .ok_or(SolPredictError::MathOverflow)?;
-    } else {
-        position.no_amount = position
-            .no_amount
-            .checked_sub(mint_amount_u64)
-            .ok_or(SolPredictError::MathOverflow)?;
-    }
+    if is_yes { position.yes_amount = position.yes_amount.saturating_sub(mint_amount_u64); }
+    else       { position.no_amount  = position.no_amount.saturating_sub(mint_amount_u64); }
     position.total_spent_lamports = position.total_spent_lamports.saturating_sub(refund);
 
     market.reentrancy_lock.release();
 
-    emit!(SharesSold {
-        market_id,
-        seller: seller_key,
-        side,
-        quantity,
-        refund,
-    });
+    emit!(SharesSold { market_id, seller: seller_key, side, quantity, refund });
 
     Ok(())
 }

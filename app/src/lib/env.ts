@@ -47,12 +47,19 @@ export const ENV = {
       process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
       "https://api.devnet.solana.com";
 
-    // On the client, route through the app's own /api/rpc rewrite (which
-    // forwards server-side to the validator) whenever the configured endpoint
-    // is a local address. Relative resolution survives host changes (LAN IP,
-    // ngrok tunnel, localhost) because the origin is taken from the page.
-    if (typeof window !== "undefined" && isLocalHostUrl(configured)) {
-      return `${clientOrigin()}/api/rpc`;
+    // On the client, route through the app's own /api/rpc proxy whenever:
+    // 1) The configured endpoint is a local address, OR
+    // 2) The configured endpoint is the public, rate-limited devnet endpoint, OR
+    // 3) An explicit /api/rpc relative proxy is specified.
+    // This utilizes the server proxy's in-memory caching and fallback layer to completely prevent 429 rate limit errors.
+    if (typeof window !== "undefined") {
+      if (
+        isLocalHostUrl(configured) ||
+        configured.includes("api.devnet.solana.com") ||
+        configured.startsWith("/api/rpc")
+      ) {
+        return `${clientOrigin()}/api/rpc`;
+      }
     }
     return configured;
   },
@@ -67,9 +74,16 @@ export const ENV = {
    * In production/remote clusters the configured public endpoint is used as-is.
    */
   get serverRpcUrl(): string {
+    if (this.isLocalnet) {
+      return process.env.LOCALNET_RPC_URL || "http://127.0.0.1:8899";
+    }
+
     const configured =
-      process.env.NEXT_PUBLIC_RPC_URL ??
-      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+      process.env.HELIUS_RPC_URL ??
+      (process.env.NEXT_PUBLIC_RPC_URL?.startsWith("http") &&
+      !process.env.NEXT_PUBLIC_RPC_URL.includes("/api/rpc")
+        ? process.env.NEXT_PUBLIC_RPC_URL
+        : undefined) ??
       process.env.LOCALNET_RPC_URL ??
       "https://api.devnet.solana.com";
 

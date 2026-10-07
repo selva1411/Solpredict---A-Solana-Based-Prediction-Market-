@@ -41,7 +41,10 @@ let programInstance: Program<Solpredict> | null = null;
 
 function getConnection(): Connection {
   if (!connectionInstance) {
-    connectionInstance = new Connection(RPC_URL, "confirmed");
+    connectionInstance = new Connection(RPC_URL, {
+      commitment: "confirmed",
+      disableRetryOnRateLimit: true,
+    });
   }
   return connectionInstance;
 }

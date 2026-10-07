@@ -255,14 +255,31 @@ pub fn handler(ctx: Context<RemoveLiquidity>, lp_tokens_to_burn: u64) -> Result<
 
     market.yes_pool_lamports = market.yes_pool_lamports.saturating_sub(yes_payout);
     market.no_pool_lamports = market.no_pool_lamports.saturating_sub(no_payout);
+    market.total_lp_tokens = market.total_lp_tokens.saturating_sub(lp_tokens_to_burn);
     // Decrement supply by the BURNED amount (not the full deposit) so partial
     // withdrawals stay consistent with the on-chain token supply.
     market.yes_supply = market.yes_supply.saturating_sub(burn_yes);
     market.no_supply = market.no_supply.saturating_sub(burn_no);
 
-    // Decrement the LP position; keep it open for partial withdrawals and only
-    // close it (returning the rent) once every LP token has been burned.
+    // Snapshot pending LP rewards before reducing lp_tokens
+    let current_acc = market.cumulative_fee_per_lp;
     let position = &mut ctx.accounts.liquidity_position;
+    if position.lp_tokens > 0 {
+        let pending = (position.lp_tokens as u128)
+            .checked_mul(current_acc.checked_sub(position.fee_debt).unwrap_or(0))
+            .ok_or(SolPredictError::MathOverflow)?
+            .checked_div(PRECISION as u128)
+            .ok_or(SolPredictError::MathOverflow)? as u64;
+
+        position.lp_rewards_earned = position
+            .lp_rewards_earned
+            .checked_add(pending)
+            .ok_or(SolPredictError::MathOverflow)?;
+    }
+    position.fee_debt = current_acc;
+
+    // Decrement the LP position; keep it open for partial withdrawals and only
+    // close it (returning the rent) once every LP token has been burned and all rewards claimed.
     position.lp_tokens = position
         .lp_tokens
         .checked_sub(lp_tokens_to_burn)
@@ -273,7 +290,7 @@ pub fn handler(ctx: Context<RemoveLiquidity>, lp_tokens_to_burn: u64) -> Result<
         .total_lamports_deposited
         .saturating_sub(burn_yes.checked_add(burn_no).ok_or(SolPredictError::MathOverflow)?);
 
-    let fully_withdrawn = position.lp_tokens == 0;
+    let fully_withdrawn = position.lp_tokens == 0 && position.lp_rewards_earned == 0;
 
     market.reentrancy_lock.release();
 

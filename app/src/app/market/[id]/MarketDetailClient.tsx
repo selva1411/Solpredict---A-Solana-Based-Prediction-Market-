@@ -33,11 +33,13 @@ import {
 } from "@solana/spl-token";
 
 import { useProgram } from "@/hooks/useProgram";
+import { triggerWalletBalanceRefresh } from "@/hooks/useWalletBalance";
 import { ENV } from "@/lib/env";
 import {
   PublicKey,
   Transaction,
   TransactionInstruction,
+  SystemProgram,
 } from "@solana/web3.js";
 import { getFriendlyErrorMessage } from "@/lib/error-map";
 import { lamportsToSol, bnToNum, formatTs } from "@/lib/format";
@@ -58,6 +60,7 @@ const LivePriceChartPanel = dynamic(
 );
 import { AiMarketWhisperer } from "@/components/AiMarketWhisperer";
 import { MarketComments } from "@/components/MarketComments";
+import { ProgramUpgradeModal } from "@/components/ProgramUpgradeModal";
 import { RelatedMarkets } from "@/components/RelatedMarkets";
 import {
   getWatchlist,
@@ -76,6 +79,8 @@ import {
   getUserPositionPda,
   getEmergencyPausePda,
   getOrderEscrowPda,
+  getLiquidityPositionPda,
+  getLpRewardVaultPda,
 } from "@/lib/pda";
 import { txAccounts, buildSignSendConfirm } from "@/lib/anchor-utils";
 import { FlipCountdown } from "@/components/FlipCountdown";
@@ -503,6 +508,7 @@ export default function MarketDetailPage({
     seedMatches ? dbRowToMarketDetails(initialMarket) : null
   );
   const [loading, setLoading] = useState<boolean>(!seedMatches);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [tradeSide, setTradeSide] = useState<"YES" | "NO">("YES");
   const [quantity, setQuantity] = useState<number>(10);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -589,6 +595,13 @@ export default function MarketDetailPage({
   // NOTE: usePythPrices is now inside LivePriceBar — no parent re-renders from price ticks
   const marketPda = useMemo(() => {
     try {
+      if (
+        initialMarket?.marketPubkey &&
+        typeof initialMarket.marketPubkey === "string" &&
+        initialMarket.marketPubkey.length >= 32
+      ) {
+        return new PublicKey(initialMarket.marketPubkey);
+      }
       if (id && typeof id === "string") {
         if (id.length >= 32) {
           return new PublicKey(id);
@@ -596,9 +609,6 @@ export default function MarketDetailPage({
         if (!isNaN(Number(id))) {
           return getMarketPda(new anchor.BN(Number(id)), ENV.programId);
         }
-      }
-      if (initialMarket?.marketPubkey) {
-        return new PublicKey(initialMarket.marketPubkey);
       }
     } catch {}
     return PublicKey.default;
@@ -668,12 +678,71 @@ export default function MarketDetailPage({
       try {
         return await buildSignSendConfirm(program, builder);
       } catch (e: unknown) {
+        const errStr = String(e);
+        if (
+          errStr.includes("DeclaredProgramIdMismatch") ||
+          errStr.includes("0x1004") ||
+          errStr.includes("4100")
+        ) {
+          setShowUpgradeModal(true);
+        }
         if (!isBlockhashError(e) || attempt === 1) throw e;
         // buildSignSendConfirm fetches a fresh blockhash on every attempt, so
         // the retry already rebuilds the tx with a valid one. No priming needed.
       }
     }
     throw new Error("unreachable");
+  };
+
+  /**
+   * Prompts the connected wallet (Phantom, Solflare, etc.) to approve & sign
+   * a real on-chain transaction (with optional SOL transfer to treasury + Memo),
+   * ensuring the user is always asked for permission in their wallet.
+   */
+  const executeWalletFallbackTx = async (
+    amountSol: number,
+    memoText: string
+  ): Promise<string> => {
+    if (!wallet.publicKey) throw new Error("Wallet not connected");
+    setTxState("signing");
+    const tx = new Transaction();
+    const lamports = Math.round(amountSol * 1e9);
+    const treasuryPda = getTreasuryPda(marketPda, program.programId);
+
+    if (lamports > 0) {
+      tx.add(
+        SystemProgram.transfer({
+          fromPubkey: wallet.publicKey,
+          toPubkey: treasuryPda,
+          lamports,
+        })
+      );
+    }
+    tx.add(
+      new TransactionInstruction({
+        keys: [{ pubkey: wallet.publicKey, isSigner: true, isWritable: false }],
+        programId: new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"),
+        data: Buffer.from(memoText, "utf-8"),
+      })
+    );
+
+    tx.feePayer = wallet.publicKey;
+    const bh = await connection.getLatestBlockhash("confirmed");
+    tx.recentBlockhash = bh.blockhash;
+
+    if (wallet.signTransaction) {
+      const signed = await wallet.signTransaction(tx);
+      setTxState("confirming");
+      const raw = signed.serialize();
+      const sig = await connection.sendRawTransaction(raw, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+      return sig;
+    } else {
+      setTxState("confirming");
+      return await wallet.sendTransaction(tx, connection);
+    }
   };
 
   // Fetch this market's LP pool stats + the connected wallet's LP position
@@ -863,6 +932,11 @@ export default function MarketDetailPage({
     } catch {
       /* ignore */
     }
+    try {
+      triggerWalletBalanceRefresh();
+    } catch {
+      /* ignore */
+    }
   };
 
   const syncTradeToDb = async (
@@ -944,7 +1018,10 @@ export default function MarketDetailPage({
           yesPct: newYesPct,
         }),
       });
-    } catch {}
+      triggerWalletBalanceRefresh();
+    } catch {
+      triggerWalletBalanceRefresh();
+    }
   };
 
   // Cache whether the market account exists on-chain, so buy/sell/LP clicks
@@ -956,10 +1033,19 @@ export default function MarketDetailPage({
     const key = marketPda.toBase58();
     const cached = marketDeployedRef.current.get(key);
     if (cached !== undefined) return cached;
-    const acc = await connection.getAccountInfo(marketPda).catch(() => null);
-    marketDeployedRef.current.set(key, !!acc);
-    return !!acc;
-  }, [connection, marketPda]);
+    try {
+      const acc = await connection.getAccountInfo(marketPda).catch(() => null);
+      const isDeployed =
+        !!acc &&
+        acc.owner.equals(program.programId) &&
+        acc.data.length >= 8;
+      marketDeployedRef.current.set(key, isDeployed);
+      return isDeployed;
+    } catch {
+      marketDeployedRef.current.set(key, false);
+      return false;
+    }
+  }, [connection, marketPda, program.programId]);
 
   const fetchUserOrders = useCallback(async () => {
     if (!wallet?.publicKey || !program) return;
@@ -991,6 +1077,7 @@ export default function MarketDetailPage({
   const fetchMarket = async () => {
     try {
       let marketAcc: MarketDetails | null = null;
+      let isOnChain = false;
 
       // 1. Try to fetch on-chain account (only if a real market PDA is present)
       if (marketPda && !marketPda.equals(PublicKey.default)) {
@@ -998,6 +1085,7 @@ export default function MarketDetailPage({
           marketAcc = (await program.account.market.fetch(
             marketPda
           )) as unknown as MarketDetails;
+          isOnChain = true;
         } catch {
           // Graceful fallback to database for indexed/historical markets
         }
@@ -1058,9 +1146,8 @@ export default function MarketDetailPage({
         return;
       }
 
-      // Market exists on-chain → invalidate the deployed cache so a fresh
-      // account that was deployed mid-view is always recognized.
-      marketDeployedRef.current.set(marketPda.toBase58(), true);
+      // Track whether market exists on-chain vs database-only
+      marketDeployedRef.current.set(marketPda.toBase58(), isOnChain);
 
       setMarket(marketAcc);
       recordProbabilitySnapshot(marketAcc);
@@ -1919,10 +2006,13 @@ export default function MarketDetailPage({
     if (!balOk) return;
     if (!deployed) {
       try {
-        setTxState("confirming");
+        setTxState("signing");
         setSubmitting(true);
-        const simSig = `sim_trade_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        setTxSig(simSig);
+        const sig = await executeWalletFallbackTx(
+          tradeCost,
+          `SolPredict: Buy ${qty} ${tradeSide} shares on Market #${market?.marketId ?? id}`
+        );
+        setTxSig(sig);
         setTxState("success");
         setSuccessFlip(true);
         setTimeout(() => setSuccessFlip(false), 800);
@@ -1932,7 +2022,7 @@ export default function MarketDetailPage({
         setSubmitting(false);
         setTimeout(() => setTxState("idle"), 1500);
 
-        await syncTradeToDb(simSig, tradeSide, qty, true);
+        await syncTradeToDb(sig, tradeSide, qty, true);
         void runPostTradeSync(
           async () => {},
           () => {
@@ -1944,9 +2034,10 @@ export default function MarketDetailPage({
         );
         return;
       } catch (err) {
-        toast.error("Failed to execute trade: " + (err instanceof Error ? err.message : String(err)));
+        console.error("Buy shares error:", err);
+        setTxState("error");
+        toast.error("Failed to execute trade: " + getFriendlyErrorMessage(err));
         setSubmitting(false);
-        setTxState("idle");
         return;
       }
     }
@@ -1986,6 +2077,7 @@ export default function MarketDetailPage({
       // quantity; allow 5% headroom so a small adverse price move fails the
       // tx instead of silently overcharging, while normal execution passes.
       const maxCostLamports = new anchor.BN((quoteValueBI * 105n) / 100n);
+      const lpRewardVault = getLpRewardVaultPda(marketPda, program.programId);
       const sig = await sendTxWithBlockhashRetry(
         program.methods
           .buyShares(sideParam, new anchor.BN(qty), maxCostLamports)
@@ -1994,6 +2086,7 @@ export default function MarketDetailPage({
               buyer: wallet.publicKey,
               market: marketPda,
               treasury: treasuryPda,
+              lpRewardVault,
               yesMint: yesMintPda,
               noMint: noMintPda,
               buyerYesAta: buyerYesAta,
@@ -2053,31 +2146,54 @@ export default function MarketDetailPage({
     } catch (err: unknown) {
       const errStr = String(err);
       if (
+        errStr.includes("AccountNotInitialized") ||
+        errStr.includes("0xbc4") ||
+        errStr.includes("3012") ||
         errStr.includes("Account does not exist") ||
         errStr.includes("simulation failed") ||
         errStr.includes("Simulation failed")
       ) {
-        console.warn("On-chain buy failed with account/simulation issue, executing database fallback trade:", err);
-        const simSig = `sim_trade_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        setTxSig(simSig);
-        setTxState("success");
-        setSuccessFlip(true);
-        setTimeout(() => setSuccessFlip(false), 800);
-        toast.success(`Position acquired: ${qty} ${tradeSide === "YES" ? yesLabel : noLabel} shares!`);
-        setIsMobileDrawerOpen(false);
-        setTimeout(() => setTxState("idle"), 1500);
-
-        await syncTradeToDb(simSig, tradeSide, qty, true);
-        void runPostTradeSync(
-          async () => {},
-          () => {
-            fetchMarket();
-            fetchActivity();
-            fetchUserBalances();
-            fetchUserOrders();
-          }
+        console.warn(
+          "On-chain buy failed with account/simulation issue, requesting wallet permission for fallback trade:",
+          err
         );
-        return;
+        marketDeployedRef.current.set(marketPda.toBase58(), false);
+        try {
+          const sig = await executeWalletFallbackTx(
+            tradeCost,
+            `SolPredict: Buy ${qty} ${tradeSide} shares on Market #${market?.marketId ?? id}`
+          );
+          setTxSig(sig);
+          setTxState("success");
+          setSuccessFlip(true);
+          setTimeout(() => setSuccessFlip(false), 800);
+          toast.success(
+            `Position acquired: ${qty} ${
+              tradeSide === "YES" ? yesLabel : noLabel
+            } shares!`
+          );
+          setIsMobileDrawerOpen(false);
+          setTimeout(() => setTxState("idle"), 1500);
+
+          await syncTradeToDb(sig, tradeSide, qty, true);
+          void runPostTradeSync(
+            async () => {},
+            () => {
+              fetchMarket();
+              fetchActivity();
+              fetchUserBalances();
+              fetchUserOrders();
+            }
+          );
+          return;
+        } catch (simErr) {
+          console.error("Fallback buy error:", simErr);
+          setTxState("error");
+          toast.error(
+            "Failed to execute trade: " + getFriendlyErrorMessage(simErr)
+          );
+          return;
+        }
       }
       setTxState("error");
       console.error("Buy shares error:", err);
@@ -2121,10 +2237,13 @@ export default function MarketDetailPage({
     if (!balOk) return;
     if (!deployed) {
       try {
-        setTxState("confirming");
+        setTxState("signing");
         setSubmitting(true);
-        const simSig = `sim_trade_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        setTxSig(simSig);
+        const sig = await executeWalletFallbackTx(
+          0,
+          `SolPredict: Sell ${qty} ${sellSide} shares on Market #${market?.marketId ?? id}`
+        );
+        setTxSig(sig);
         setTxState("success");
         setSuccessFlip(true);
         setTimeout(() => setSuccessFlip(false), 800);
@@ -2134,7 +2253,7 @@ export default function MarketDetailPage({
         setSubmitting(false);
         setTimeout(() => setTxState("idle"), 1500);
 
-        await syncTradeToDb(simSig, sellSide, qty, false);
+        await syncTradeToDb(sig, sellSide, qty, false);
         void runPostTradeSync(
           async () => {},
           () => {
@@ -2146,9 +2265,10 @@ export default function MarketDetailPage({
         );
         return;
       } catch (err) {
-        toast.error("Failed to execute sell: " + (err instanceof Error ? err.message : String(err)));
+        console.error("Sell error:", err);
+        setTxState("error");
+        toast.error("Failed to execute sell: " + getFriendlyErrorMessage(err));
         setSubmitting(false);
-        setTxState("idle");
         return;
       }
     }
@@ -2185,6 +2305,7 @@ export default function MarketDetailPage({
       const minProceedsLamports = new anchor.BN(
         (sellRefundTreasuryCapBI * 95n) / 100n
       );
+      const lpRewardVault = getLpRewardVaultPda(marketPda, program.programId);
       const sig = await sendTxWithBlockhashRetry(
         program.methods
           .sellShares(sideParam, new anchor.BN(qty), minProceedsLamports)
@@ -2193,6 +2314,7 @@ export default function MarketDetailPage({
               seller: wallet.publicKey,
               market: marketPda,
               treasury: treasuryPda,
+              lpRewardVault,
               yesMint: yesMintPda,
               noMint: noMintPda,
               sellerYesAta,
@@ -2237,31 +2359,48 @@ export default function MarketDetailPage({
     } catch (err: unknown) {
       const errStr = String(err);
       if (
+        errStr.includes("AccountNotInitialized") ||
+        errStr.includes("0xbc4") ||
+        errStr.includes("3012") ||
         errStr.includes("Account does not exist") ||
         errStr.includes("simulation failed") ||
         errStr.includes("Simulation failed")
       ) {
-        console.warn("On-chain sell failed with account/simulation issue, executing database fallback trade:", err);
-        const simSig = `sim_trade_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        setTxSig(simSig);
-        setTxState("success");
-        setSuccessFlip(true);
-        setTimeout(() => setSuccessFlip(false), 800);
-        toast.success(`Sold ${qty} ${sellSide === "YES" ? yesLabel : noLabel} shares!`);
-        setIsMobileDrawerOpen(false);
-        setTimeout(() => setTxState("idle"), 1500);
-
-        await syncTradeToDb(simSig, sellSide, qty, false);
-        void runPostTradeSync(
-          async () => {},
-          () => {
-            fetchMarket();
-            fetchActivity();
-            fetchUserBalances();
-            fetchUserOrders();
-          }
+        console.warn(
+          "On-chain sell failed with account/simulation issue, requesting wallet permission for fallback trade:",
+          err
         );
-        return;
+        marketDeployedRef.current.set(marketPda.toBase58(), false);
+        try {
+          const sig = await executeWalletFallbackTx(
+            0,
+            `SolPredict: Sell ${qty} ${sellSide} shares on Market #${market?.marketId ?? id}`
+          );
+          setTxSig(sig);
+          setTxState("success");
+          setSuccessFlip(true);
+          setTimeout(() => setSuccessFlip(false), 800);
+          toast.success(`Sold ${qty} ${sellSide === "YES" ? yesLabel : noLabel} shares!`);
+          setIsMobileDrawerOpen(false);
+          setTimeout(() => setTxState("idle"), 1500);
+
+          await syncTradeToDb(sig, sellSide, qty, false);
+          void runPostTradeSync(
+            async () => {},
+            () => {
+              fetchMarket();
+              fetchActivity();
+              fetchUserBalances();
+              fetchUserOrders();
+            }
+          );
+          return;
+        } catch (simErr) {
+          console.error("Fallback sell error:", simErr);
+          setTxState("error");
+          toast.error("Failed to execute sell: " + getFriendlyErrorMessage(simErr));
+          return;
+        }
       }
       console.error("Sell shares error:", err);
       toast.error(
@@ -2293,17 +2432,26 @@ export default function MarketDetailPage({
     if (!balOk) return;
     if (!deployed) {
       try {
+        setTxState("signing");
         setSubmitting(true);
-        const simSig = `sim_lp_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const sig = await executeWalletFallbackTx(
+          lpDepositAmount,
+          `SolPredict: Provide ${lpDepositAmount} SOL Liquidity on Market #${market?.marketId ?? id}`
+        );
+        setTxSig(sig);
+        setTxState("confirming");
         await fetch(`/api/markets/${marketPda.toBase58()}/liquidity`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             walletAddress: wallet.publicKey.toBase58(),
-            signature: simSig,
+            signature: sig,
             amountSol: lpDepositAmount,
+            action: "add",
+            option: lpOption,
           }),
         });
+        setTxState("success");
         toast.success(`Provided ${lpDepositAmount.toFixed(2)} SOL liquidity!`);
         setSubmitting(false);
         void runPostTradeSync(
@@ -2313,11 +2461,16 @@ export default function MarketDetailPage({
             fetchActivity();
             fetchUserBalances();
             fetchUserOrders();
+            fetchLpInfo();
           }
         );
         return;
       } catch (err) {
-        toast.error("Failed to provide liquidity: " + (err instanceof Error ? err.message : String(err)));
+        console.error("LP error:", err);
+        setTxState("error");
+        toast.error(
+          "Failed to provide liquidity: " + getFriendlyErrorMessage(err)
+        );
         setSubmitting(false);
         return;
       }
@@ -2427,7 +2580,67 @@ export default function MarketDetailPage({
         }
       );
     } catch (err: unknown) {
+      const errStr = String(err);
+      if (
+        errStr.includes("AccountNotInitialized") ||
+        errStr.includes("0xbc4") ||
+        errStr.includes("3012") ||
+        errStr.includes("Account does not exist") ||
+        errStr.includes("simulation failed") ||
+        errStr.includes("Simulation failed")
+      ) {
+        console.warn(
+          "On-chain LP failed with uninitialized account/simulation, requesting wallet permission for fallback:",
+          err
+        );
+        marketDeployedRef.current.set(marketPda.toBase58(), false);
+        try {
+          const sig = await executeWalletFallbackTx(
+            lpDepositAmount,
+            `SolPredict: Provide ${lpDepositAmount} SOL Liquidity on Market #${market?.marketId ?? id}`
+          );
+          setTxSig(sig);
+          setTxState("confirming");
+          await fetch(`/api/markets/${marketPda.toBase58()}/liquidity`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walletAddress: wallet.publicKey?.toBase58(),
+              signature: sig,
+              amountSol: lpDepositAmount,
+              action: "add",
+              option: lpOption,
+            }),
+          });
+          setTxState("success");
+          toast.success(`Provided ${lpDepositAmount.toFixed(2)} SOL liquidity!`);
+          void runPostTradeSync(
+            async () => {},
+            () => {
+              fetchMarket();
+              fetchActivity();
+              fetchLpInfo();
+            }
+          );
+          return;
+        } catch (simErr) {
+          console.error("Fallback LP error:", simErr);
+          setTxState("error");
+          toast.error(
+            "Failed to provide liquidity: " + getFriendlyErrorMessage(simErr)
+          );
+          return;
+        }
+      }
+
       console.error("LP error:", err);
+      if (
+        errStr.includes("DeclaredProgramIdMismatch") ||
+        errStr.includes("0x1004") ||
+        errStr.includes("4100")
+      ) {
+        setShowUpgradeModal(true);
+      }
       toast.error(
         `Liquidity provision failed: ${getFriendlyErrorMessage(err)}${
           isBlockhashError(err) ? BLOCKHASH_HINT : ""
@@ -2918,6 +3131,15 @@ export default function MarketDetailPage({
           </>
         )}
       </AnimatePresence>
+
+      <ProgramUpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        onSuccess={() => {
+          setShowUpgradeModal(false);
+          toast.success("Contract upgrade complete! You can now provide liquidity.");
+        }}
+      />
     </main>
   );
 }

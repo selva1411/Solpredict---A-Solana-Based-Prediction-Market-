@@ -156,3 +156,11 @@ pub struct MarketProposalProcessed {
     pub status: u8,
     pub market_id: Option<u64>,
 }
+
+/// Emitted when an LP claims their accumulated fee rewards via `claim_lp_rewards`.
+#[event]
+pub struct LpRewardsClaimed {
+    pub market_id: u64,
+    pub provider:  Pubkey,
+    pub amount:    u64,
+}

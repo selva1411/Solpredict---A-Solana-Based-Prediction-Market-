@@ -106,3 +106,17 @@ pub const SOL_USD_FEED_ID: [u8; 32] = [
 /// Minimum total LP deposit (yes + no) accepted by add_liquidity. Dust
 /// positions cost the provider rent and pollute pool accounting.
 pub const MIN_LP_LAMPORTS: u64 = 10_000_000; // 0.01 SOL
+
+/// Share of every trade fee routed to LP providers, in basis points.
+/// 5000 = 50% of the fee goes to LPs, 50% stays for admin withdrawal.
+/// Example: fee_bps=30 on a 1 SOL trade → 0.003 SOL fee
+///   → 0.0015 SOL to LPs, 0.0015 SOL to admin.
+pub const LP_FEE_SHARE_BPS: u64 = 5_000;
+
+/// Seed for the LP reward vault PDA.
+/// This is a data-less system account separate from the trading treasury,
+/// so LP claims never interfere with winner payouts.
+/// Seeds: [LP_REWARD_VAULT_SEED, market.key()]
+#[constant]
+pub const LP_REWARD_VAULT_SEED: &[u8] = b"lp_reward_vault";
+

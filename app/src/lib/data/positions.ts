@@ -153,6 +153,8 @@ export interface LpPosition {
   amountSol: number;
   lpTokens: number;
   estFeeEarnedSol: number;
+  lpRewardsEarnedLamports?: number;
+  lpRewardsClaimedLamports?: number;
   apy: string;
 }
 
@@ -170,6 +172,8 @@ export async function getLpPositions(wallet: string): Promise<LpPosition[]> {
       lpShares: liquidityPositions.lpShares,
       deposited: liquidityPositions.deposited,
       feesEarned: liquidityPositions.feesEarned,
+      lpRewardsEarned: liquidityPositions.lpRewardsEarned,
+      lpRewardsClaimed: liquidityPositions.lpRewardsClaimed,
       question: marketsCache.question,
       category: marketsCache.category,
       status: marketsCache.status,
@@ -183,7 +187,8 @@ export async function getLpPositions(wallet: string): Promise<LpPosition[]> {
     .orderBy(desc(liquidityPositions.updatedAt));
 
   return rows.map((r) => {
-    const feesEarnedSol = Number(r.feesEarned ?? 0);
+    const rewardsSol = Number(r.lpRewardsEarned ?? 0) / 1e9;
+    const feesEarnedSol = Number(r.feesEarned ?? 0) + rewardsSol;
     return {
       id: r.id,
       marketPubkey: r.marketPubkey,
@@ -193,6 +198,8 @@ export async function getLpPositions(wallet: string): Promise<LpPosition[]> {
       amountSol: Number(r.deposited ?? 0),
       lpTokens: Number(r.lpShares ?? 0),
       estFeeEarnedSol: feesEarnedSol,
+      lpRewardsEarnedLamports: Number(r.lpRewardsEarned ?? 0),
+      lpRewardsClaimedLamports: Number(r.lpRewardsClaimed ?? 0),
       // No real fee-velocity data is persisted, so APY cannot be computed
       // honestly. Display a dash rather than inventing a percentage.
       apy: "—",

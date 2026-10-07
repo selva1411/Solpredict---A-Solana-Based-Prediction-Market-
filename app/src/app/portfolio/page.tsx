@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { ClientWalletButton } from "@/components/ClientWalletButton";
 import { useSolPrice } from "@/hooks/useSolPrice";
+import { useWalletBalance } from "@/hooks/useWalletBalance";
 import { useProgram } from "@/hooks/useProgram";
 import { useRealtime } from "@/hooks/useRealtime";
 import { subscribeAppActivity } from "@/lib/sync-events";
@@ -76,6 +77,7 @@ export default function PortfolioPage() {
   const { publicKey } = useWallet();
   const { program, connection } = useProgram();
   const { solPrice } = useSolPrice();
+  const { balanceSol: walletBalanceSol } = useWalletBalance();
   const queryClient = useQueryClient();
   const [positions, setPositions] = useState<Position[]>([]);
   const [lpPositions, setLpPositions] = useState<LpPosition[]>([]);
@@ -440,6 +442,10 @@ export default function PortfolioPage() {
 
   const usdValue =
     solPrice > 0 ? (displayStats.netWorthSol * solPrice).toFixed(2) : null;
+  const walletUsdValue =
+    walletBalanceSol !== null && solPrice > 0
+      ? (walletBalanceSol * solPrice).toFixed(2)
+      : null;
   const winRatePct = (displayStats.winRate * 100).toFixed(0);
 
   return (
@@ -454,8 +460,8 @@ export default function PortfolioPage() {
         Portfolio Ledger
       </h1>
 
-      {/* Three large stats on one baseline, separated by vertical hairlines */}
-      <section className="border border-hairline bg-cream rounded-xl grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-hairline mb-8 overflow-hidden shadow-sm">
+      {/* Four stats on one baseline: Net Worth, 24h P&L, Win Rate, and Wallet Balance */}
+      <section className="border border-hairline bg-cream rounded-xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 divide-x-0 sm:divide-x divide-hairline mb-8 overflow-hidden shadow-sm">
         <div className="p-6">
           <Stat
             size="lg"
@@ -487,6 +493,18 @@ export default function PortfolioPage() {
                 : "—"
             }
             hint={`${displayPositions.length} open positions`}
+          />
+        </div>
+        <div className="p-6 bg-[#FAF9F5] dark:bg-[#1A1D21]/60">
+          <Stat
+            size="lg"
+            label="Wallet Balance"
+            value={
+              walletBalanceSol !== null
+                ? `${walletBalanceSol.toFixed(4)} SOL`
+                : "—"
+            }
+            hint={walletUsdValue ? `≈ $${walletUsdValue} USD` : "Liquid SOL"}
           />
         </div>
       </section>

@@ -195,6 +195,9 @@ pub fn handler(
     market.fee_bps = ctx.accounts.config.fee_bps;
     market.bump = ctx.bumps.market;
     market.treasury_bump = ctx.bumps.treasury;
+    market.lp_fee_pool = 0;
+    market.total_lp_tokens = 0;
+    market.cumulative_fee_per_lp = 0;
 
     // 10. Emit event for frontend
     emit!(MarketCreated {
