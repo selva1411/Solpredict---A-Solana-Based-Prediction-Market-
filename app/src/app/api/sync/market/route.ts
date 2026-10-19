@@ -1,5 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
+import { revalidateTag } from "@/lib/cache-control";
 import { applyMarketEvent } from "@/lib/indexer/reducer";
 import { fetchMarketAccount } from "@/lib/indexer/onchain";
 import { serverError, ok, badRequest } from "@/lib/api-response";
@@ -7,8 +8,10 @@ import { apiHandler } from "@/lib/api-handler";
 import { syncMarketSchema } from "@/lib/schemas";
 import { db } from "@/lib/db/client";
 import { marketOutcomes, marketsCache } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { isDevAuthEnabled } from "@/lib/dev-auth";
+import { updateSampleMarketStatus } from "@/lib/data/sample-markets";
+import { invalidateMarketList } from "@/lib/data/markets";
 
 export const POST = apiHandler(async (req: NextRequest) => {
   const body = await req.json().catch(() => null);
@@ -25,18 +28,36 @@ export const POST = apiHandler(async (req: NextRequest) => {
 
   const data = parsed.data;
 
+  // Always update in-memory fallback cache
+  if (data.status) {
+    updateSampleMarketStatus(data.marketPubkey, data.status, data.winningOutcome);
+    if (data.marketId != null) {
+      updateSampleMarketStatus(data.marketId, data.status, data.winningOutcome);
+    }
+  }
+
   try {
     const onChain = await fetchMarketAccount(data.marketPubkey);
     if (!onChain) {
-      // If the market is indexed in DB or running in dev environment, update the DB record gracefully
+      // If the market is indexed in DB or running in dev environment or settling, update the DB record gracefully
       if (db) {
+        const conditions = [eq(marketsCache.marketPubkey, data.marketPubkey)];
+        if (data.marketId != null) {
+          conditions.push(eq(marketsCache.marketId, data.marketId));
+        }
+
         const [existing] = await db
           .select({ marketPubkey: marketsCache.marketPubkey })
           .from(marketsCache)
-          .where(eq(marketsCache.marketPubkey, data.marketPubkey))
+          .where(or(...conditions))
           .limit(1);
 
-        if (existing || isDevAuthEnabled()) {
+        if (
+          existing ||
+          isDevAuthEnabled() ||
+          data.status === "settled" ||
+          data.status === "cancelled"
+        ) {
           await applyMarketEvent({
             type: "market",
             marketPubkey: data.marketPubkey,
@@ -55,6 +76,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
             endTs: data.endTs,
             resolveTs: data.resolveTs,
           });
+          invalidateMarketList();
+          revalidateTag("markets");
           return ok({ ok: true, synced: true, source: "db_fallback" });
         }
       }
@@ -78,6 +101,27 @@ export const POST = apiHandler(async (req: NextRequest) => {
       return Number(v);
     };
 
+    const onChainStatus =
+      acc.status && typeof acc.status === "object"
+        ? "settled" in acc.status
+          ? "settled"
+          : "cancelled" in acc.status
+          ? "cancelled"
+          : "open"
+        : undefined;
+    const finalStatus = data.status ?? onChainStatus ?? "open";
+
+    const onChainWinning =
+      acc.winningOutcome && typeof acc.winningOutcome === "object"
+        ? "yes" in acc.winningOutcome
+          ? "YES"
+          : "no" in acc.winningOutcome
+          ? "NO"
+          : undefined
+        : undefined;
+    const finalWinningOutcome =
+      data.winningOutcome ?? onChainWinning ?? undefined;
+
     await applyMarketEvent({
       type: "market",
       marketPubkey: data.marketPubkey,
@@ -85,8 +129,8 @@ export const POST = apiHandler(async (req: NextRequest) => {
       question: data.question,
       description: data.description ?? "",
       category: data.category ?? "Crypto",
-      status: data.status ?? "open",
-      winningOutcome: data.winningOutcome ?? undefined,
+      status: finalStatus,
+      winningOutcome: finalWinningOutcome,
       // On-chain truth for every financial field — client values discarded.
       yesPoolLamports: toNum(acc.yesPoolLamports),
       noPoolLamports: toNum(acc.noPoolLamports),
@@ -109,6 +153,9 @@ export const POST = apiHandler(async (req: NextRequest) => {
           .onConflictDoNothing();
       }
     }
+
+    invalidateMarketList();
+    revalidateTag("markets");
 
     return ok({ ok: true, synced: true, verified: true });
   } catch (err) {

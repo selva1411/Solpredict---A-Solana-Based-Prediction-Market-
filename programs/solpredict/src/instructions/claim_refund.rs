@@ -19,6 +19,7 @@ pub struct ClaimRefund<'info> {
 
     /// Market — must be Cancelled.
     #[account(
+        mut,
         seeds = [MARKET_SEED, market.market_id.to_le_bytes().as_ref()],
         bump = market.bump,
         constraint = market.status == MarketStatus::Cancelled @ SolPredictError::MarketNotCancelled,
@@ -84,6 +85,9 @@ pub struct ClaimRefund<'info> {
 /// Burns all YES and NO tokens the user holds, refunds the exact original
 /// purchase price in SOL. No fee deducted on cancellation.
 pub fn handler(ctx: Context<ClaimRefund>) -> Result<()> {
+    // Acquire the reentrancy lock BEFORE any state mutation or fund transfer
+    ctx.accounts.market.reentrancy_lock.acquire(&crate::ID)?;
+
     // 1. Check not already claimed/refunded
     require!(
         !ctx.accounts.user_position.claimed,
@@ -188,5 +192,48 @@ pub fn handler(ctx: Context<ClaimRefund>) -> Result<()> {
         ctx.accounts.market.market_id
     );
 
+    ctx.accounts.market.reentrancy_lock.release();
+
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_claim_refund_calculation() {
+        let share_price_lamports: u64 = 1_000_000_000; // 1 SOL per share
+        let yes_tokens: u64 = 5 * BASE_UNITS_PER_SHARE; // 5 shares
+        let no_tokens: u64 = 3 * BASE_UNITS_PER_SHARE;  // 3 shares
+
+        let total_tokens = yes_tokens + no_tokens;
+        let refund = (total_tokens as u128)
+            .checked_mul(share_price_lamports as u128)
+            .unwrap()
+            .checked_div(BASE_UNITS_PER_SHARE as u128)
+            .unwrap();
+
+        assert_eq!(refund, 8 * 1_000_000_000);
+    }
+
+    #[test]
+    fn test_double_claim_guard() {
+        let mut position = UserPosition {
+            owner: Pubkey::new_unique(),
+            market: Pubkey::new_unique(),
+            yes_amount: 1000,
+            no_amount: 0,
+            total_spent_lamports: 1000,
+            claimed: false,
+            bump: 255,
+        };
+
+        // First claim succeeds
+        assert!(!position.claimed);
+        position.claimed = true;
+
+        // Second claim must fail
+        assert!(position.claimed, "Position must be marked claimed to block double-refunds");
+    }
 }

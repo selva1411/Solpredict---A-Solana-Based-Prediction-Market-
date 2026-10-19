@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { AlertCircle, Wallet } from "lucide-react";
+import { AlertCircle, Wallet, CheckCircle } from "lucide-react";
 import { ENV } from "@/lib/env";
 import { useWalletBalance } from "@/hooks/useWalletBalance";
 
@@ -114,6 +114,9 @@ export interface TradingPanelProps {
   handleProvideLiquidity: () => void;
   handlePlaceLimitOrder: (isBuy: boolean) => void;
   handleCancelOrder: (order: UserOrder) => void;
+  winningSide?: "YES" | "NO" | null;
+  handleClaimRewards?: () => void;
+  handleClaimRefund?: () => void;
 }
 
 /* ------------------------------------------------------------------ */
@@ -177,6 +180,9 @@ export function TradingPanel(p: TradingPanelProps) {
     handleProvideLiquidity,
     handlePlaceLimitOrder,
     handleCancelOrder,
+    winningSide = null,
+    handleClaimRewards,
+    handleClaimRefund,
   } = p;
 
   const { balanceSol, formattedSol } = useWalletBalance();
@@ -207,37 +213,159 @@ export function TradingPanel(p: TradingPanelProps) {
     }
   };
 
-  /* ------- closed-market banner ------- */
+  /* ------- closed-market banner & payout withdrawal ------- */
   if (status !== "Open") {
+    if (status === "Settled") {
+      const winningShares =
+        winningSide === "YES"
+          ? userYesBalance
+          : winningSide === "NO"
+          ? userNoBalance
+          : 0;
+      const losingShares =
+        winningSide === "YES"
+          ? userNoBalance
+          : winningSide === "NO"
+          ? userYesBalance
+          : 0;
+      const losingSide = winningSide === "YES" ? "NO" : "YES";
+      const estPayoutSol = winningShares * (sharePriceSol || 0.01);
+
+      return (
+        <div className="p-6 text-center bg-white dark:bg-[#1A1D21] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-[3px] flex items-center justify-center mx-auto bg-[#EDF8F3] dark:bg-[rgba(29,124,89,0.15)] border border-[#C5E8D8] dark:border-[#1D7C59]/30">
+            <CheckCircle className="w-6 h-6 text-[#1D7C59]" />
+          </div>
+
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-[#EDF8F3] text-[#1D7C59] border border-[#C5E8D8] dark:bg-[#1D7C59]/20 dark:text-[#52B788] dark:border-[#1D7C59]/40 mb-2">
+              Resolved: {winningSide ? `${winningSide} Won` : "Settled"}
+            </div>
+            <h4 className="font-sans font-bold text-[18px] text-[#181A1C] dark:text-[#EAE8E3]">
+              Market Settled
+            </h4>
+            <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] mt-1 leading-relaxed">
+              This market has settled. Holders of winning shares can withdraw their SOL payout directly to their connected wallet.
+            </p>
+          </div>
+
+          {winningShares > 0 ? (
+            <div className="p-4 bg-[#F8F9FA] dark:bg-[#15171A] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] text-left space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-[#555D65] dark:text-[#9AA1AA] font-mono">
+                  Your Winning Shares:
+                </span>
+                <span className="font-mono font-bold text-[#1D7C59] dark:text-[#52B788]">
+                  {winningShares.toFixed(2)} {winningSide}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-[#555D65] dark:text-[#9AA1AA] font-mono">
+                  Estimated Payout:
+                </span>
+                <span className="font-mono font-bold text-[#181A1C] dark:text-[#EAE8E3]">
+                  ≈ {estPayoutSol.toFixed(3)} SOL
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleClaimRewards}
+                disabled={submitting}
+                className="w-full mt-2 py-3 px-4 bg-[#1D7C59] hover:bg-[#166347] active:scale-[0.99] text-white font-sans font-bold text-xs uppercase tracking-wider rounded-[3px] transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Requesting Wallet Signature...
+                  </>
+                ) : (
+                  <>Withdraw Payout ({estPayoutSol.toFixed(3)} SOL)</>
+                )}
+              </button>
+              <p className="text-[10px] text-[#7F8892] dark:text-[#68707B] text-center font-mono leading-tight">
+                Prompts wallet for signature &amp; updates balance instantly upon confirmation
+              </p>
+            </div>
+          ) : losingShares > 0 ? (
+            <div className="p-4 bg-[#FBF1F0] dark:bg-[#2A1D1C] rounded-[3px] border border-[#ECCDC9] dark:border-[#B43C34]/30 text-xs text-[#B43C34] dark:text-[#E57373] text-left space-y-1">
+              <div className="font-bold">No Winning Position</div>
+              <p className="text-[11px] opacity-90 leading-relaxed">
+                You held {losingShares.toFixed(2)} {losingSide} shares. Since {winningSide} won, this position resolved at 0 payout.
+              </p>
+            </div>
+          ) : (
+            <div className="p-4 bg-[#F8F9FA] dark:bg-[#15171A] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] text-xs text-[#555D65] dark:text-[#9AA1AA] text-center">
+              You hold 0 winning shares in this market. If you already withdrew your payout, your SOL balance has been updated.
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (status === "Cancelled") {
+      const totalShares = userYesBalance + userNoBalance;
+      return (
+        <div className="p-6 text-center bg-white dark:bg-[#1A1D21] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] space-y-4 shadow-sm">
+          <div className="w-12 h-12 rounded-[3px] flex items-center justify-center mx-auto bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] border border-[#ECCDC9] dark:border-[#B43C34]/30">
+            <AlertCircle className="w-5 h-5 text-[#B43C34]" />
+          </div>
+          <div>
+            <h4 className="font-sans font-bold text-[17px] text-[#181A1C] dark:text-[#EAE8E3]">
+              Market Cancelled
+            </h4>
+            <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] mt-1 leading-relaxed">
+              This market was cancelled. Traders can withdraw a full 100% refund of deposited funds below.
+            </p>
+          </div>
+
+          {totalShares > 0 ? (
+            <div className="p-4 bg-[#F8F9FA] dark:bg-[#15171A] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] text-left space-y-3">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-[#555D65] dark:text-[#9AA1AA] font-mono">
+                  Your Refundable Shares:
+                </span>
+                <span className="font-mono font-bold text-[#181A1C] dark:text-[#EAE8E3]">
+                  {userYesBalance > 0 && `${userYesBalance.toFixed(2)} YES `}
+                  {userNoBalance > 0 && `${userNoBalance.toFixed(2)} NO`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClaimRefund}
+                disabled={submitting}
+                className="w-full mt-2 py-3 px-4 bg-[#1F3A52] hover:bg-[#16293B] text-white font-sans font-bold text-xs uppercase tracking-wider rounded-[3px] transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Requesting Wallet Signature...
+                  </>
+                ) : (
+                  <>Withdraw Full Refund</>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="p-4 bg-[#F8F9FA] dark:bg-[#15171A] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] text-xs text-[#555D65] dark:text-[#9AA1AA] text-center">
+              No deposited funds found to refund for this wallet.
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // Ended (awaiting oracle)
     return (
       <div className="p-8 text-center bg-white dark:bg-[#1A1D21] rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36]">
         <div className="w-12 h-12 rounded-[3px] flex items-center justify-center mx-auto mb-4 bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] border border-[#ECCDC9] dark:border-[#B43C34]/30">
           <AlertCircle className="w-5 h-5 text-[#B43C34]" />
         </div>
         <h4 className="font-sans font-bold text-[17px] text-[#181A1C] dark:text-[#EAE8E3] mb-1.5">
-          {status === "Cancelled"
-            ? "Market Cancelled"
-            : status === "Ended"
-            ? "Trading Ended"
-            : "Market Settled"}
+          Trading Ended
         </h4>
         <p className="text-[12px] text-[#555D65] dark:text-[#9AA1AA] leading-relaxed max-w-[34ch] mx-auto">
-          {status === "Cancelled" ? (
-            "This market was cancelled. Deposited funds are being returned to traders — no action needed."
-          ) : status === "Ended" ? (
-            "Trading for this market has ended. Oracle resolution is pending."
-          ) : (
-            <>
-              This market has settled. Go to your{" "}
-              <Link
-                href="/dashboard"
-                className="text-[#1F3A52] dark:text-[#7A9BB5] hover:underline font-semibold"
-              >
-                Dashboard
-              </Link>{" "}
-              to withdraw payout.
-            </>
-          )}
+          Trading for this market has ended. Oracle resolution is pending. Payout withdrawal will unlock as soon as settlement is confirmed.
         </p>
       </div>
     );

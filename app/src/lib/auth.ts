@@ -5,16 +5,31 @@ import { sign } from "jsonwebtoken";
 import { verify } from "jsonwebtoken";
 import { randomBytes, randomUUID } from "crypto";
 import { isDevAuthEnabled } from "./dev-auth";
+import Redis from "ioredis";
 
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Challenge nonce registry: nonce → expiry timestamp. A nonce is issued by
 // generateChallenge, must be redeemed within NONCE_TTL_MS, and is consumed on
 // first use (consume-once) so a captured signature can never be replayed.
-// NOTE: in-memory Map — for multi-instance production deployments replace with
-// a Redis key with the same TTL.
 const NONCE_TTL_MS = 5 * 60 * 1000;
 const nonceCache = new Map<string, number>();
+
+let redisClient: Redis | null = null;
+function getRedisClient(): Redis | null {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+  if (!redisClient) {
+    try {
+      const client = new Redis(url, { lazyConnect: false, maxRetriesPerRequest: 1 });
+      client.on("error", () => {});
+      redisClient = client;
+    } catch {
+      redisClient = null;
+    }
+  }
+  return redisClient;
+}
 
 /**
  * Session signing secret. In production a missing SESSION_SECRET is a fatal
@@ -51,6 +66,13 @@ export function generateChallenge(wallet: string): string {
   // Register the nonce with a 5-minute expiry so verifySignature can reject
   // stale or already-redeemed challenges.
   nonceCache.set(nonce, Date.now() + NONCE_TTL_MS);
+
+  // Sync to Redis if configured for multi-instance deployments (TTL 300s)
+  const redis = getRedisClient();
+  if (redis) {
+    redis.set(`solpredict:nonce:${nonce}`, "1", "EX", 300).catch(() => {});
+  }
+
   const issuedAt = new Date().toISOString();
   return [
     "solpredict.xyz wants you to sign in with your Solana account:",
@@ -81,6 +103,12 @@ export function verifySignature(
       const expiry = nonceCache.get(nonce);
       if (expiry === undefined || expiry < Date.now()) return false;
       nonceCache.delete(nonce); // consume-once: a signature can't be replayed
+
+      // Invalidate distributed Redis key if present
+      const redis = getRedisClient();
+      if (redis) {
+        redis.del(`solpredict:nonce:${nonce}`).catch(() => {});
+      }
     }
     const messageBytes = new TextEncoder().encode(message);
     return ed25519.verify(signature, messageBytes, wallet.toBytes());

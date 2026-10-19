@@ -5,7 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletBalance } from "@/hooks/useWalletBalance";
 import { useSolPrice } from "@/hooks/useSolPrice";
 import { RotateCw, AlertTriangle, Droplets } from "lucide-react";
-import { triggerWalletBalanceRefresh } from "@/hooks/useWalletBalance";
+import { triggerWalletBalanceRefresh, forceWalletBalanceRefresh } from "@/hooks/useWalletBalance";
 
 export function WalletBalanceBadge() {
   const { publicKey } = useWallet();
@@ -21,9 +21,10 @@ export function WalletBalanceBadge() {
     if (refreshing) return;
     setRefreshing(true);
     try {
+      forceWalletBalanceRefresh();
       await refetch();
     } finally {
-      setTimeout(() => setRefreshing(false), 400);
+      setTimeout(() => setRefreshing(false), 500);
     }
   };
 

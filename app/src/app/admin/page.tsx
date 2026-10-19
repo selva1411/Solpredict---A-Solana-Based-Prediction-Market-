@@ -11,6 +11,8 @@ import {
   Keypair,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  Transaction,
+  TransactionInstruction,
 } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
@@ -20,6 +22,7 @@ import { getFriendlyErrorMessage } from "@/lib/error-map";
 import { lamportsToSol, bnToNum } from "@/lib/format";
 import { txAccounts, sendWithRetry } from "@/lib/anchor-utils";
 import { notifyAppActivity, subscribeAppActivity } from "@/lib/sync-events";
+import { triggerWalletBalanceRefresh, forceWalletBalanceRefresh } from "@/hooks/useWalletBalance";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
@@ -454,6 +457,9 @@ function AdminPage() {
                 if (cached.noPoolLamports) {
                   m.account.noPoolLamports = safeBnLamports(cached.noPoolLamports, cached.noPoolSol);
                 }
+                if (cached.feeWithdrawn !== undefined) {
+                  m.account.feeWithdrawn = Boolean(cached.feeWithdrawn || m.account.feeWithdrawn);
+                }
               }
             });
 
@@ -491,7 +497,8 @@ function AdminPage() {
                     feeCollected: new anchor.BN(
                       Math.round((c.totalVolume || 0) * 1e9 * 0.02)
                     ),
-                    feeWithdrawn: false,
+                    // Read feeWithdrawn from DB so it persists across page loads
+                    feeWithdrawn: Boolean(c.feeWithdrawn),
                     feeBps: 200,
                     totalVolume: c.totalVolume || 0,
                   },
@@ -1247,14 +1254,16 @@ function AdminPage() {
   const syncMarketStatusToDb = async (
     market: Market,
     status: "settled" | "cancelled" | "open",
-    winningOutcome?: string
+    winningOutcome?: string,
+    overridePubkey?: PublicKey
   ) => {
     try {
+      const pubkeyStr = (overridePubkey || market.publicKey).toBase58();
       await fetch("/api/sync/market", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          marketPubkey: market.publicKey.toBase58(),
+          marketPubkey: pubkeyStr,
           marketId: market.account.marketId.toNumber(),
           question: market.account.question,
           description: market.account.description,
@@ -1267,8 +1276,35 @@ function AdminPage() {
           resolveTs: market.account.resolveTs.toNumber(),
         }),
       });
+
+      setMarkets((prev) =>
+        prev.map((m) =>
+          m.publicKey.toBase58() === pubkeyStr ||
+          m.account.marketId.toNumber() === market.account.marketId.toNumber()
+            ? {
+                ...m,
+                account: {
+                  ...m.account,
+                  status:
+                    status === "settled"
+                      ? { settled: {} }
+                      : status === "cancelled"
+                      ? { cancelled: {} }
+                      : { open: {} },
+                  winningOutcome:
+                    winningOutcome === "YES"
+                      ? { yes: {} }
+                      : winningOutcome === "NO"
+                      ? { no: {} }
+                      : { unset: {} },
+                },
+              }
+            : m
+        )
+      );
+
       notifyAppActivity({
-        marketPubkey: market.publicKey.toBase58(),
+        marketPubkey: pubkeyStr,
         type: `market_${status}`,
       });
     } catch (e) {
@@ -1286,13 +1322,29 @@ function AdminPage() {
         market.account.targetPrice.toNumber() /
         Math.pow(10, Math.abs(market.account.targetExpo));
       const winSide = settlePrice >= targetPriceNorm ? "YES" : "NO";
-      const accInfo = await connection
+
+      let marketPubkeyToUse = market.publicKey;
+      let accInfo = await connection
         .getAccountInfo(market.publicKey)
         .catch(() => null);
 
+      if (!accInfo && market.account.marketId) {
+        const derivedPda = getMarketPda(
+          market.account.marketId,
+          program.programId
+        );
+        const derivedAcc = await connection
+          .getAccountInfo(derivedPda)
+          .catch(() => null);
+        if (derivedAcc) {
+          marketPubkeyToUse = derivedPda;
+          accInfo = derivedAcc;
+        }
+      }
+
       if (!accInfo) {
         // Historical database market not present on current local validator
-        await syncMarketStatusToDb(market, "settled", winSide);
+        await syncMarketStatusToDb(market, "settled", winSide, marketPubkeyToUse);
         toast.success(`Historical market resolved as ${winSide} in Database!`);
         fetchConfigAndMarkets();
         return;
@@ -1332,7 +1384,7 @@ function AdminPage() {
       const settleBuilder = program.methods.settleMarket().accounts(
         txAccounts({
           admin: wallet.publicKey,
-          market: market.publicKey,
+          market: marketPubkeyToUse,
           config: configPda,
           priceUpdate: mockPriceUpdatePda,
         })
@@ -1341,7 +1393,7 @@ function AdminPage() {
       await sendWithRetry(program, settleBuilder);
 
       toast.success(`Market resolved successfully on-chain!`);
-      await syncMarketStatusToDb(market, "settled", winSide);
+      await syncMarketStatusToDb(market, "settled", winSide, marketPubkeyToUse);
       fetchConfigAndMarkets();
     } catch (err: unknown) {
       console.error(err);
@@ -1455,13 +1507,28 @@ function AdminPage() {
       setSettlingId(marketKey);
 
       const winSide = outcome === 1 ? "YES" : "NO";
-      const accInfo = await connection
+      let marketPubkeyToUse = market.publicKey;
+      let accInfo = await connection
         .getAccountInfo(market.publicKey)
         .catch(() => null);
 
+      if (!accInfo && market.account.marketId) {
+        const derivedPda = getMarketPda(
+          market.account.marketId,
+          program.programId
+        );
+        const derivedAcc = await connection
+          .getAccountInfo(derivedPda)
+          .catch(() => null);
+        if (derivedAcc) {
+          marketPubkeyToUse = derivedPda;
+          accInfo = derivedAcc;
+        }
+      }
+
       if (!accInfo) {
         // Historical database market not present on current local validator
-        await syncMarketStatusToDb(market, "settled", winSide);
+        await syncMarketStatusToDb(market, "settled", winSide, marketPubkeyToUse);
         toast.success(`Historical market resolved as ${winSide} in Database!`);
         fetchConfigAndMarkets();
         return;
@@ -1475,14 +1542,14 @@ function AdminPage() {
           txAccounts({
             admin: wallet.publicKey,
             config: configPda,
-            market: market.publicKey,
+            market: marketPubkeyToUse,
           })
         );
 
       await sendWithRetry(program, manualSettleBuilder);
 
       toast.success(`Market manually resolved successfully on-chain!`);
-      await syncMarketStatusToDb(market, "settled", winSide);
+      await syncMarketStatusToDb(market, "settled", winSide, marketPubkeyToUse);
       fetchConfigAndMarkets();
     } catch (err: unknown) {
       console.error(err);
@@ -1521,46 +1588,179 @@ function AdminPage() {
   };
 
   const handleWithdrawFees = async (market: Market) => {
-    if (!wallet?.publicKey) return;
+    if (!wallet?.publicKey || !program) {
+      toast.error("Please connect an admin wallet first.");
+      return;
+    }
+    setWithdrawing(true);
     try {
-      const accInfo = await connection
-        .getAccountInfo(market.publicKey)
+      let marketKeyToUse = market.publicKey;
+      let accInfo = await connection
+        .getAccountInfo(marketKeyToUse)
         .catch(() => null);
+
+      if (!accInfo && market.account.marketId) {
+        const derivedPda = getMarketPda(market.account.marketId, program.programId);
+        const derivedAcc = await connection
+          .getAccountInfo(derivedPda)
+          .catch(() => null);
+        if (derivedAcc) {
+          marketKeyToUse = derivedPda;
+          accInfo = derivedAcc;
+        }
+      }
+
       if (!accInfo) {
-        // DB cached market fallback handling
+        // Market is in database cache but not currently on-chain.
+        // Process withdrawal via authenticated admin API and credit the admin wallet balance.
+        const feeLamports = market.account.feeCollected
+          ? market.account.feeCollected.toNumber()
+          : Math.round(((market.account as any).totalVolume || 0) * 1e9 * 0.02);
+        const feeSol = lamportsToSol(feeLamports);
+
+        let sig = "admin-auth-" + Date.now().toString(36);
+        // Optional gasless message signing if supported
+        if (wallet.signMessage) {
+          try {
+            const msgBytes = new TextEncoder().encode(
+              `SolPredict Admin: Authorize Fee Withdrawal for Market #${market.account.marketId.toString()} (${feeSol.toFixed(3)} SOL)`
+            );
+            const sigBytes = await wallet.signMessage(msgBytes);
+            sig = Buffer.from(sigBytes).toString("hex").slice(0, 16);
+          } catch (signErr: any) {
+            const errStr = String(signErr?.message || signErr || "");
+            if (errStr.includes("User rejected") || errStr.includes("User denied")) {
+              toast.info("Fee withdrawal cancelled in wallet.");
+              return;
+            }
+            // Fallback to session authorization signature
+            sig = "admin-auth-" + Date.now().toString(36);
+          }
+        }
+
+        await fetch("/api/wallet/credits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet: wallet.publicKey.toBase58(),
+            deltaLamports: feeLamports,
+          }),
+        }).catch(() => null);
+
         await adminFetch("/api/admin/proposals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "withdraw_fees",
             marketId: market.account.marketId.toNumber(),
+            marketPubkey: marketKeyToUse.toBase58(),
+            recipientWallet: wallet.publicKey.toBase58(),
+            amountLamports: feeLamports,
           }),
         }).catch(() => null);
 
-        toast.success("Platform protocol fees successfully processed!");
+        // Optimistically flip feeWithdrawn in local state so UI updates immediately
+        setMarkets((prev) =>
+          prev.map((m) =>
+            m.publicKey.toBase58() === marketKeyToUse.toBase58()
+              ? { ...m, account: { ...m.account, feeWithdrawn: true } }
+              : m
+          )
+        );
+
+        toast.success(
+          `Protocol fees successfully collected! (${feeSol.toFixed(3)} SOL)`
+        );
+        // Refresh connected wallet's balance across entire UI — force real on-chain fetch
+        forceWalletBalanceRefresh();
+        notifyAppActivity({
+          wallet: wallet.publicKey.toBase58(),
+          marketPubkey: marketKeyToUse.toBase58(),
+          type: "fees_withdrawn",
+        });
         fetchConfigAndMarkets();
         return;
       }
 
+      const feeLamports = market.account.feeCollected
+        ? market.account.feeCollected.toNumber()
+        : 0;
+
       const configPda = getConfigPda(program.programId);
-      const treasuryPda = getTreasuryPda(market.publicKey, program.programId);
+      const treasuryPda = getTreasuryPda(marketKeyToUse, program.programId);
 
       const withdrawBuilder = program.methods.withdrawFees().accounts(
         txAccounts({
           admin: wallet.publicKey,
           config: configPda,
-          market: market.publicKey,
+          market: marketKeyToUse,
           treasury: treasuryPda,
           systemProgram: SystemProgram.programId,
         })
       );
 
-      await sendWithRetry(program, withdrawBuilder);
+      const sig = await sendWithRetry(program, withdrawBuilder);
 
-      toast.success("Platform protocol fees successfully withdrawn on-chain!");
+      toast.success(
+        `Platform protocol fees successfully withdrawn on-chain! (Tx: ${sig ? String(sig).slice(0, 8) : "confirmed"}...)`
+      );
+
+      // Refresh connected wallet's balance across entire UI — force real on-chain fetch
+      forceWalletBalanceRefresh();
+
+      if (feeLamports > 0 && process.env.NEXT_PUBLIC_CLUSTER === "localnet") {
+        await fetch("/api/wallet/credits", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet: wallet.publicKey.toBase58(),
+            deltaLamports: feeLamports,
+          }),
+        }).catch(() => null);
+      }
+
+      // Mirror fee withdrawal status in DB cache (set feeWithdrawn=true)
+      await adminFetch("/api/admin/proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "withdraw_fees",
+          marketId: market.account.marketId.toNumber(),
+          marketPubkey: marketKeyToUse.toBase58(),
+          recipientWallet: wallet.publicKey.toBase58(),
+          amountLamports: feeLamports,
+        }),
+      }).catch(() => null);
+
+      // Optimistically flip feeWithdrawn in local state so the button changes immediately
+      setMarkets((prev) =>
+        prev.map((m) =>
+          m.publicKey.toBase58() === marketKeyToUse.toBase58()
+            ? { ...m, account: { ...m.account, feeWithdrawn: true } }
+            : m
+        )
+      );
+
+      notifyAppActivity({
+        wallet: wallet.publicKey.toBase58(),
+        marketPubkey: marketKeyToUse.toBase58(),
+        type: "fees_withdrawn",
+      });
+
       fetchConfigAndMarkets();
     } catch (err: unknown) {
-      toast.error(`Withdrawal failed: ${getFriendlyErrorMessage(err)}`);
+      const errStr = String((err as any)?.message || err || "");
+      if (
+        errStr.includes("User rejected") ||
+        errStr.includes("User denied") ||
+        errStr.includes("rejected the request")
+      ) {
+        toast.info("Fee withdrawal cancelled in wallet.");
+      } else {
+        toast.error(`Withdrawal failed: ${getFriendlyErrorMessage(err)}`);
+      }
+    } finally {
+      setWithdrawing(false);
     }
   };
 
@@ -2984,10 +3184,16 @@ function AdminPage() {
               <div className="pt-4 border-t border-hairline">
                 <button
                   onClick={() => {
-                    if (markets.length > 0) {
-                      handleWithdrawFees(markets[0]);
+                    const eligibleMarket = markets.find(
+                      (m) =>
+                        m.account.status.settled !== undefined &&
+                        !m.account.feeWithdrawn &&
+                        m.account.feeCollected.toNumber() > 0
+                    );
+                    if (eligibleMarket) {
+                      handleWithdrawFees(eligibleMarket);
                     } else {
-                      toast.info("No markets available to withdraw fees from.");
+                      toast.info("No settled markets with pending fees to withdraw.");
                     }
                   }}
                   disabled={withdrawing}

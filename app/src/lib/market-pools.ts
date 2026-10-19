@@ -89,12 +89,23 @@ export function resolvePoolReserves(input: PoolReservesInput): PoolReserves {
  * never feed this back into reserve calculation.
  */
 export function impliedYesOdds(
-  yesPoolLamports: number,
-  noPoolLamports: number
+  yesPoolLamports: number | string | bigint,
+  noPoolLamports: number | string | bigint
 ): number {
-  const total = yesPoolLamports + noPoolLamports;
-  if (total <= 0) return 0.5;
-  return yesPoolLamports / total;
+  try {
+    const y = typeof yesPoolLamports === "bigint" ? yesPoolLamports : BigInt(Math.floor(Number(yesPoolLamports) || 0));
+    const n = typeof noPoolLamports === "bigint" ? noPoolLamports : BigInt(Math.floor(Number(noPoolLamports) || 0));
+    const total = y + n;
+    if (total <= 0n) return 0.5;
+    // Scale by 100,000 for 5 decimal digits precision in integer space
+    return Number((y * 100000n) / total) / 100000;
+  } catch {
+    const y = Number(yesPoolLamports) || 0;
+    const n = Number(noPoolLamports) || 0;
+    const total = y + n;
+    if (total <= 0) return 0.5;
+    return y / total;
+  }
 }
 
 /**

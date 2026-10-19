@@ -119,6 +119,13 @@ function createDb(): NeonHttpDatabase<typeof schema> {
   const instance = drizzle(sql, { schema });
   console.log("[DB] Connected to Neon PostgreSQL (with connect retry)");
 
+  // Ensure fee_withdrawn column exists in markets_cache table
+  try {
+    sql`ALTER TABLE markets_cache ADD COLUMN IF NOT EXISTS fee_withdrawn BOOLEAN DEFAULT FALSE`.catch(
+      (err) => console.warn("[DB] Auto-migration check fee_withdrawn:", err)
+    );
+  } catch {}
+
   // Keep the Neon serverless compute warm so the first request after a period
   // of inactivity doesn't pay a ~10-15s cold-start (observed on every page
   // load after ~5 min idle). A trivial SELECT 1 every 60s keeps the pool warm

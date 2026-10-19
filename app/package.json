@@ -18,7 +18,8 @@
     "db:push": "drizzle-kit push",
     "indexer": "node --env-file=.env.local --import tsx src/workers/indexer.ts",
     "indexer:loop": "node --env-file=.env.local --import tsx src/workers/indexer.ts --loop",
-    "user-stats": "node --env-file=.env.local --import tsx src/workers/user-stats-cron.ts"
+    "user-stats": "node --env-file=.env.local --import tsx src/workers/user-stats-cron.ts",
+    "gap-fill": "node --env-file=.env.local --import tsx src/workers/gap-fill-price-history.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

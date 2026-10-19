@@ -205,11 +205,11 @@ pub fn handler(
 
     match side {
         Side::Yes => {
-            market.yes_pool_lamports = market.yes_pool_lamports.checked_add(treasury_amount).ok_or(SolPredictError::MathOverflow)?;
+            market.yes_pool_lamports = market.yes_pool_lamports.checked_add(base_cost).ok_or(SolPredictError::MathOverflow)?;
             market.yes_supply = market.yes_supply.checked_add(mint_amount_u64).ok_or(SolPredictError::MathOverflow)?;
         }
         Side::No => {
-            market.no_pool_lamports = market.no_pool_lamports.checked_add(treasury_amount).ok_or(SolPredictError::MathOverflow)?;
+            market.no_pool_lamports = market.no_pool_lamports.checked_add(base_cost).ok_or(SolPredictError::MathOverflow)?;
             market.no_supply = market.no_supply.checked_add(mint_amount_u64).ok_or(SolPredictError::MathOverflow)?;
         }
     }

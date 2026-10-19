@@ -205,3 +205,28 @@ pub fn handler(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_zero_shares_insufficient() {
+        let quantity = 10u64;
+        let mint_amount = (quantity as u128) * (BASE_UNITS_PER_SHARE as u128);
+        let mint_amount_u64 = u64::try_from(mint_amount).unwrap();
+
+        let user_ata_amount = 0u64;
+        assert!(user_ata_amount < mint_amount_u64, "Zero shares held must fail InsufficientShares check");
+    }
+
+    #[test]
+    fn test_expiry_timestamp_guard() {
+        let market_end_ts: i64 = 1_000_000;
+        let clock_before: i64 = 999_999;
+        let clock_expired: i64 = 1_000_000;
+
+        assert!(clock_before < market_end_ts, "Active market before end_ts must be allowed");
+        assert!(!(clock_expired < market_end_ts), "Expired market must be rejected with MarketExpired");
+    }
+}

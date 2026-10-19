@@ -443,4 +443,68 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn property_fuzz_anti_gravity_monotonicity() {
+        struct XorShift64(u64);
+        impl XorShift64 {
+            fn next_u64(&mut self) -> u64 {
+                let mut x = self.0;
+                x ^= x << 13;
+                x ^= x >> 7;
+                x ^= x << 17;
+                self.0 = x;
+                x
+            }
+            fn gen_range(&mut self, min: u64, max: u64) -> u64 {
+                if min >= max { return min; }
+                min + (self.next_u64() % (max - min + 1))
+            }
+        }
+
+        let mut rng = XorShift64(0x9E3779B97F4A7C15);
+
+        for _ in 0..100_000 {
+            let pool_yes = rng.gen_range(1_000_000, 50_000_000_000) as u128;
+            let pool_no = rng.gen_range(1_000_000, 50_000_000_000) as u128;
+            let dy_n = rng.gen_range(20_000, 10_000_000) as u128;
+            let dy_half = dy_n / 2;
+            let fee_bps = rng.gen_range(0, 1000) as u16;
+
+            let p_before = get_spot_price_yes(pool_yes, pool_no, fee_bps).unwrap();
+
+            // 1. Buy YES (size N): p_yes after > p_yes before
+            let cost_yes_n = get_buy_cost_in(pool_yes, pool_no, dy_n, fee_bps).unwrap();
+            let base_cost_yes_n = cost_yes_n * (10_000 - fee_bps as u128) / 10_000;
+            let p_after_yes_n = get_spot_price_yes(pool_yes + base_cost_yes_n, pool_no, fee_bps).unwrap();
+            assert!(
+                p_after_yes_n > p_before,
+                "p_yes after YES buy must be strictly greater than before: p_before={}, p_after={}",
+                p_before, p_after_yes_n
+            );
+
+            // 2. Buy NO (size N): p_yes after < p_yes before
+            let cost_no_n = get_buy_cost_in(pool_no, pool_yes, dy_n, fee_bps).unwrap();
+            let base_cost_no_n = cost_no_n * (10_000 - fee_bps as u128) / 10_000;
+            let p_after_no_n = get_spot_price_yes(pool_yes, pool_no + base_cost_no_n, fee_bps).unwrap();
+            assert!(
+                p_after_no_n < p_before,
+                "p_yes after NO buy must be strictly less than before: p_before={}, p_after={}",
+                p_before, p_after_no_n
+            );
+
+            // 3. Monotonicity: delta(N) > delta(N/2)
+            let cost_yes_half = get_buy_cost_in(pool_yes, pool_no, dy_half, fee_bps).unwrap();
+            let base_cost_yes_half = cost_yes_half * (10_000 - fee_bps as u128) / 10_000;
+            let p_after_yes_half = get_spot_price_yes(pool_yes + base_cost_yes_half, pool_no, fee_bps).unwrap();
+
+            let delta_n = p_after_yes_n - p_before;
+            let delta_half = p_after_yes_half - p_before;
+            assert!(
+                delta_n > delta_half,
+                "monotonicity violated: delta_n ({}) <= delta_half ({})",
+                delta_n, delta_half
+            );
+        }
+    }
 }

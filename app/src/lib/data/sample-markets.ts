@@ -193,3 +193,23 @@ export const SAMPLE_MARKETS: SampleMarket[] = [
     ["solana", "ethereum", "dex", "defi"]
   ),
 ];
+
+export function updateSampleMarketStatus(
+  pubkeyOrId: string | number,
+  status: string,
+  winningOutcome?: string | null
+): void {
+  const normStatus = status.toLowerCase();
+  const normWin = winningOutcome ? winningOutcome.toUpperCase() : null;
+  const match = SAMPLE_MARKETS.find(
+    (m) =>
+      m.marketPubkey === String(pubkeyOrId) ||
+      String(m.marketId) === String(pubkeyOrId)
+  );
+  if (match) {
+    match.status = normStatus;
+    if (normWin) match.winningOutcome = normWin;
+    match.settledAt = new Date().toISOString();
+  }
+}
+

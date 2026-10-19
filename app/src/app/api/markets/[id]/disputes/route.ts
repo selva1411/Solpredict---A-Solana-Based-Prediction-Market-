@@ -18,6 +18,9 @@ export const GET = apiHandler(
     if (!marketPubkey) return badRequest("Market ID required");
 
     try {
+      const market = await getMarket(marketPubkey);
+      if (!market) return notFound("Market not found");
+
       const disputes = await getMarketDisputes(marketPubkey);
       return ok({ ok: true, disputes });
     } catch (err) {

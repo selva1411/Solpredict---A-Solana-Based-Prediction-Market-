@@ -23,3 +23,8 @@ next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local test & state caches
+.local-balances.json
+.wallet-credits.json
+

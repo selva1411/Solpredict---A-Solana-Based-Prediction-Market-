@@ -15,6 +15,9 @@
  * real signature/session authentication.
  */
 export function isDevAuthEnabled(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
   return (
     process.env.NODE_ENV === "development" &&
     (process.env.DEV_AUTH_ENABLED === "1" ||

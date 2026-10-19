@@ -1,5 +1,6 @@
 import { db } from "@/lib/db/client";
 import { SAMPLE_MARKETS } from "./sample-markets";
+import { isFeeWithdrawn } from "@/lib/db/fee-withdrawn-store";
 import {
   marketsCache,
   marketOutcomes,
@@ -301,6 +302,7 @@ async function loadMarketList(
       noPoolLamports: r.noPoolLamports ?? 0,
       yesSupply: r.yesSupply ?? 0,
       noSupply: r.noSupply ?? 0,
+      feeWithdrawn: isFeeWithdrawn(r.marketPubkey),
       totalPool,
       outcomes:
         marketOutcomesList.length > 0
@@ -413,6 +415,7 @@ export async function getMarket(pubkey: string) {
 
     return {
       ...m,
+      feeWithdrawn: isFeeWithdrawn(m.marketPubkey),
       totalVolume,
       openInterest: Number(m.openInterest ?? 0),
       yesPoolSol,

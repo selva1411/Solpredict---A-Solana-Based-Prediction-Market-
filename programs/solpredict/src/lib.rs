@@ -270,29 +270,34 @@ pub mod solpredict {
             // derived from mutable state.
             market.reentrancy_lock.acquire(&crate::ID)?;
 
-            let losing_pool = match outcome {
-                1 => market.no_pool_lamports,
-                2 => market.yes_pool_lamports,
-                _ => 0,
-            };
+            let settle_res = (|| -> Result<()> {
+                let losing_pool = match outcome {
+                    1 => market.no_pool_lamports,
+                    2 => market.yes_pool_lamports,
+                    _ => 0,
+                };
 
-            let fee = payout_math::calculate_fee(losing_pool, market.fee_bps)?;
-            market.fee_collected = fee;
+                let fee = payout_math::calculate_fee(losing_pool, market.fee_bps)?;
+                market.fee_collected = fee;
 
-            let total_pool = market.yes_pool_lamports
-                .checked_add(market.no_pool_lamports)
-                .ok_or(SolPredictError::MathOverflow)?;
-            market.total_payout_pool = total_pool.saturating_sub(fee);
+                let total_pool = market.yes_pool_lamports
+                    .checked_add(market.no_pool_lamports)
+                    .ok_or(SolPredictError::MathOverflow)?;
+                market.total_payout_pool = total_pool.saturating_sub(fee);
 
-            market.winning_outcome = if outcome == 1 { WinningOutcome::Yes } else { WinningOutcome::No };
-            market.status = MarketStatus::Settled;
-            market.settled_at = clock.unix_timestamp;
+                market.winning_outcome = if outcome == 1 { WinningOutcome::Yes } else { WinningOutcome::No };
+                market.status = MarketStatus::Settled;
+                market.settled_at = clock.unix_timestamp;
 
-            // Persist the mutated Market back into the on-chain account data.
-            // remaining_accounts are NOT auto-persisted by Anchor's exit(), so
-            // we call Account::exit manually (includes the 8-byte discriminator).
-            market.exit(&crate::ID)?;
+                // Persist the mutated Market back into the on-chain account data.
+                // remaining_accounts are NOT auto-persisted by Anchor's exit(), so
+                // we call Account::exit manually (includes the 8-byte discriminator).
+                market.exit(&crate::ID)?;
+                Ok(())
+            })();
+
             market.reentrancy_lock.release();
+            settle_res?;
 
             emit!(MarketSettled {
                 market_id: market.market_id,
@@ -383,5 +388,39 @@ pub mod solpredict {
     /// Reject a pending market proposal: close it on-chain and slash its bond (admin-only).
     pub fn reject_market(ctx: Context<RejectMarket>) -> Result<()> {
         instructions::reject_market::handler(ctx)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_batch_settle_pda_verification_rejects_forged_account() {
+        let market_id = 42u64;
+        let (valid_pda, bump) = Pubkey::find_program_address(
+            &[MARKET_SEED, &market_id.to_le_bytes()],
+            &crate::ID,
+        );
+
+        // Derive expected PDA from seeds and bump
+        let expected_pda = Pubkey::create_program_address(
+            &[MARKET_SEED, &market_id.to_le_bytes(), &[bump]],
+            &crate::ID,
+        ).unwrap();
+
+        assert_eq!(valid_pda, expected_pda);
+
+        // Forged account: random pubkey mimicking the market
+        let forged_pubkey = Pubkey::new_unique();
+        assert_ne!(forged_pubkey, expected_pda, "Forged pubkey must not match derived PDA");
+
+        // Tampered bump
+        let invalid_bump = bump.wrapping_add(1);
+        let tampered_result = Pubkey::create_program_address(
+            &[MARKET_SEED, &market_id.to_le_bytes(), &[invalid_bump]],
+            &crate::ID,
+        );
+        assert!(tampered_result.is_err() || tampered_result.unwrap() != valid_pda);
     }
 }

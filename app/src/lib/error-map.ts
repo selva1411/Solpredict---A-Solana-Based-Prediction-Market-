@@ -146,8 +146,19 @@ export function getFriendlyErrorMessage(err: unknown): string {
     return "This market account has not been initialized on-chain yet.";
   }
 
-  if (msg.includes("User rejected the request")) {
-    return "Transaction signature rejected by user.";
+  if (
+    msg.includes("User rejected") ||
+    msg.includes("User denied") ||
+    msg.includes("Transaction cancelled")
+  ) {
+    return "Transaction signature cancelled by user.";
+  }
+
+  if (
+    msg.includes("WalletSendTransactionError") ||
+    msg.includes("StandardWalletAdapter")
+  ) {
+    return "Wallet transaction error. Please ensure your wallet is set to Solana Devnet and has devnet SOL for network fees.";
   }
 
   if (msg.includes("Account does not exist")) {

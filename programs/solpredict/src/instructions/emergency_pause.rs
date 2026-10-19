@@ -199,3 +199,56 @@ pub fn set_guardian_threshold_handler(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_multisig_threshold_logic() {
+        let admin = Pubkey::new_unique();
+        let mut pause = EmergencyPause {
+            paused: true,
+            paused_by: admin,
+            paused_at: 1000,
+            confirmations: 0,
+            required_confirmations: 2,
+            bump: 255,
+            guardians: [Pubkey::default(); MAX_GUARDIANS],
+        };
+        pause.guardians[0] = admin;
+
+        let active = pause.guardians.iter().filter(|g| **g != Pubkey::default()).count() as u8;
+        assert_eq!(active, 1);
+
+        // Threshold 2 exceeds 1 active guardian
+        assert!(pause.required_confirmations > active);
+
+        // Add 2nd guardian
+        let g2 = Pubkey::new_unique();
+        pause.guardians[1] = g2;
+        let active = pause.guardians.iter().filter(|g| **g != Pubkey::default()).count() as u8;
+        assert_eq!(active, 2);
+        assert!(pause.required_confirmations <= active);
+
+        // Check verification count simulation
+        let signers = vec![admin]; // Only 1 signer
+        let mut valid_count = 0u8;
+        for s in &signers {
+            if pause.guardians.contains(s) {
+                valid_count += 1;
+            }
+        }
+        assert!(valid_count < pause.required_confirmations, "1 signature should fail 2-of-2 requirement");
+
+        // Both sign
+        let signers = vec![admin, g2];
+        let mut valid_count = 0u8;
+        for s in &signers {
+            if pause.guardians.contains(s) {
+                valid_count += 1;
+            }
+        }
+        assert!(valid_count >= pause.required_confirmations, "2 signatures should satisfy 2-of-2 requirement");
+    }
+}

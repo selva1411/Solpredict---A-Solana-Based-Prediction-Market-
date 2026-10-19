@@ -84,4 +84,17 @@ describe("useWalletBalance utilities and event handling", () => {
     expect(calculateMaxLp(0.01)).toBe(0.1);
     expect(calculateMaxLp(null)).toBe(0.1);
   });
+
+  it("forceWalletBalanceRefresh dispatches event with forceOnChain: true", async () => {
+    const { forceWalletBalanceRefresh } = await import("./useWalletBalance");
+    const dispatchSpy = vi.fn();
+    (globalThis as any).window.dispatchEvent = dispatchSpy;
+
+    forceWalletBalanceRefresh();
+
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+    const event = dispatchSpy.mock.calls[0][0];
+    expect(event.type).toBe(BALANCE_REFRESH_EVENT);
+    expect(event.detail?.forceOnChain).toBe(true);
+  });
 });

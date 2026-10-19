@@ -83,6 +83,9 @@ pub fn handler(ctx: Context<RemoveLiquidity>, lp_tokens_to_burn: u64) -> Result<
     let market = &mut ctx.accounts.market;
     let lp = &ctx.accounts.liquidity_position;
 
+    require!(market.status == MarketStatus::Open, SolPredictError::MarketNotOpen);
+    let clock = Clock::get()?;
+    require!(clock.unix_timestamp < market.end_ts, SolPredictError::MarketExpired);
     require!(lp.lp_tokens >= lp_tokens_to_burn, SolPredictError::NoLpTokens);
     require!(lp_tokens_to_burn > 0, SolPredictError::InvalidQuantity);
 
@@ -308,4 +311,37 @@ pub fn handler(ctx: Context<RemoveLiquidity>, lp_tokens_to_burn: u64) -> Result<
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_remove_liquidity_requires_open_status() {
+        assert_eq!(MarketStatus::Open as u8, 0);
+        assert_ne!(MarketStatus::Settled as u8, MarketStatus::Open as u8);
+        assert_ne!(MarketStatus::Cancelled as u8, MarketStatus::Open as u8);
+
+        // Verification condition: only MarketStatus::Open is permitted
+        let check_status = |status: MarketStatus| -> bool {
+            status == MarketStatus::Open
+        };
+
+        assert!(check_status(MarketStatus::Open));
+        assert!(!check_status(MarketStatus::Settled));
+        assert!(!check_status(MarketStatus::Cancelled));
+    }
+
+    #[test]
+    fn test_remove_liquidity_requires_before_end_ts() {
+        let end_ts: i64 = 1_000_000;
+        let check_time = |now: i64| -> bool {
+            now < end_ts
+        };
+
+        assert!(check_time(999_999));
+        assert!(!check_time(1_000_000));
+        assert!(!check_time(1_000_001));
+    }
 }

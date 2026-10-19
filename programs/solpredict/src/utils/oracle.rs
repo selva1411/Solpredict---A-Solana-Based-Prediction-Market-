@@ -229,5 +229,28 @@ mod tests {
         let future_publish_time = current_time + 1;
         assert!(!(future_publish_time <= current_time), "Future timestamp must be rejected");
     }
+
+    #[test]
+    fn test_compare_prices_exact_equality_boundary() {
+        // When oracle_price == target_price exactly, both GreaterThan and LessThan must be false
+        assert!(
+            !compare_prices(100_00, -2, 100_00, -2, Comparison::GreaterThan).unwrap(),
+            "Exact price equality must evaluate to false for GreaterThan"
+        );
+        assert!(
+            !compare_prices(100_00, -2, 100_00, -2, Comparison::LessThan).unwrap(),
+            "Exact price equality must evaluate to false for LessThan"
+        );
+
+        // Different exponents but identical mathematical value ($100.00 vs $100.000)
+        assert!(
+            !compare_prices(100_00, -2, 100_000, -3, Comparison::GreaterThan).unwrap(),
+            "Exact price equality with different exponents must evaluate to false for GreaterThan"
+        );
+        assert!(
+            !compare_prices(100_00, -2, 100_000, -3, Comparison::LessThan).unwrap(),
+            "Exact price equality with different exponents must evaluate to false for LessThan"
+        );
+    }
 }
 

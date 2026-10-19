@@ -305,7 +305,11 @@ export async function fetchMarketAccount(
   const program = getProgram();
   try {
     const pda = new PublicKey(marketPubkey);
-    return await program.account.market.fetchNullable(pda);
+    const fetchPromise = program.account.market.fetchNullable(pda);
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 2500)
+    );
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch {
     return null;
   }

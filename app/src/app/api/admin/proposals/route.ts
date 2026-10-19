@@ -233,14 +233,30 @@ export const POST = apiHandler(async (req: NextRequest) => {
         }
         return ok({ ok: true, action: "approve", marketId });
 
-      case "withdraw_fees":
-        if (marketId && db) {
-          await db
-            .update(marketsCache)
-            .set({ updatedAt: new Date() })
-            .where(eq(marketsCache.marketId, Number(marketId)));
+      case "withdraw_fees": {
+        const {
+          marketPubkey: mPubkey,
+          recipientWallet,
+          amountLamports,
+        } = body as {
+          marketPubkey?: string;
+          recipientWallet?: string;
+          amountLamports?: number;
+        };
+        const { markFeeWithdrawn } = await import("@/lib/db/fee-withdrawn-store");
+        if (mPubkey) {
+          markFeeWithdrawn(mPubkey);
         }
-        return ok({ ok: true, action: "withdraw_fees", marketId });
+
+        if (recipientWallet && amountLamports && amountLamports > 0) {
+          const { addWalletCredit } = await import("@/lib/db/wallet-credits-store");
+          addWalletCredit(recipientWallet, amountLamports);
+          const { creditLocalBalance } = await import("@/app/api/rpc/route");
+          creditLocalBalance(recipientWallet, amountLamports);
+        }
+
+        return ok({ ok: true, action: "withdraw_fees", marketId, marketPubkey: mPubkey });
+      }
 
       default:
         return badRequest("Invalid action parameter");

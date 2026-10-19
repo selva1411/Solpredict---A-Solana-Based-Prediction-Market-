@@ -3,7 +3,7 @@ use anchor_lang::system_program;
 
 use crate::constants::*;
 use crate::errors::SolPredictError;
-use crate::events::{MarketProposalProcessed, MarketProposed};
+use crate::events::MarketProposed;
 use crate::state::{Config, MarketProposal, ProposalStatus};
 
 #[derive(Accounts)]
@@ -117,4 +117,24 @@ pub fn handler(
     });
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_minimum_proposal_bond_requirement() {
+        let min_bond = MarketProposal::MIN_BOND_LAMPORTS;
+        assert_eq!(min_bond, 100_000_000); // 0.1 SOL
+
+        let check_bond = |provided: u64| -> bool {
+            provided >= MarketProposal::MIN_BOND_LAMPORTS
+        };
+
+        assert!(check_bond(min_bond));
+        assert!(check_bond(min_bond + 1));
+        assert!(!check_bond(min_bond - 1), "Bond below MIN_BOND_LAMPORTS must be rejected");
+        assert!(!check_bond(0), "Zero bond must be rejected");
+    }
 }
