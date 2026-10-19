@@ -400,10 +400,10 @@ export function TradingPanel(p: TradingPanelProps) {
           <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={() => setTradeSide("YES")}
-              className={`flex flex-col items-start justify-between p-3.5 transition-colors cursor-pointer rounded-[3px] border text-left ${
+              className={`flex flex-col items-start justify-between p-3.5 transition-all duration-150 cursor-pointer rounded-[3px] border text-left hover:-translate-y-0.5 active:scale-[0.99] ${
                 tradeSide === "YES"
-                  ? "border-[#1D7C59] bg-[#EDF6F1] dark:bg-[rgba(29,124,89,0.15)] ring-1 ring-[#1D7C59]"
-                  : "border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21] hover:border-[#BCDDCF] dark:hover:border-[#1D7C59]/40"
+                  ? "border-[#1D7C59] bg-[#EDF6F1] dark:bg-[rgba(29,124,89,0.15)] ring-1 ring-[#1D7C59] shadow-xs"
+                  : "border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21] hover:border-[#BCDDCF] dark:hover:border-[#1D7C59]/40 hover:shadow-xs"
               }`}
               style={{ minHeight: "116px" }}
             >
@@ -439,10 +439,10 @@ export function TradingPanel(p: TradingPanelProps) {
 
             <button
               onClick={() => setTradeSide("NO")}
-              className={`flex flex-col items-start justify-between p-3.5 transition-colors cursor-pointer rounded-[3px] border text-left ${
+              className={`flex flex-col items-start justify-between p-3.5 transition-all duration-150 cursor-pointer rounded-[3px] border text-left hover:-translate-y-0.5 active:scale-[0.99] ${
                 tradeSide === "NO"
-                  ? "border-[#B43C34] bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] ring-1 ring-[#B43C34]"
-                  : "border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21] hover:border-[#ECCDC9] dark:hover:border-[#B43C34]/40"
+                  ? "border-[#B43C34] bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.15)] ring-1 ring-[#B43C34] shadow-xs"
+                  : "border-[#E2DFD7] dark:border-[#2A2F36] bg-white dark:bg-[#1A1D21] hover:border-[#ECCDC9] dark:hover:border-[#B43C34]/40 hover:shadow-xs"
               }`}
               style={{ minHeight: "116px" }}
             >
@@ -676,7 +676,7 @@ export function TradingPanel(p: TradingPanelProps) {
               isLimitOrder ? () => handlePlaceLimitOrder(true) : handleBuy
             }
             whileTap={{ scale: 0.98 }}
-            className={`w-full h-11 font-sans font-semibold text-[13px] tracking-wide cursor-pointer transition-colors rounded-[3px] disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`w-full h-11 font-sans font-semibold text-[13px] tracking-wide cursor-pointer rounded-[3px] disabled:opacity-40 disabled:cursor-not-allowed shadow-sm hover:shadow hover:brightness-105 active:scale-[0.99] transition-all ${
               tradeSide === "YES"
                 ? "bg-[#1D7C59] hover:bg-[#166347] text-white"
                 : "bg-[#B43C34] hover:bg-[#962F28] text-white"

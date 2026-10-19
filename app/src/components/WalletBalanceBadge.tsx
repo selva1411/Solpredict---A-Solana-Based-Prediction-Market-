@@ -45,7 +45,7 @@ export function WalletBalanceBadge() {
       onMouseLeave={() => setShowTooltip(false)}
     >
       <div
-        className={`flex items-center gap-1.5 px-2.5 h-[30px] rounded-[3px] border transition-colors cursor-pointer select-none ${
+        className={`flex items-center gap-1.5 px-2.5 h-[30px] rounded-[3px] border shadow-xs transition-all duration-150 cursor-pointer select-none hover:-translate-y-0.5 hover:shadow-sm ${
           isLow
             ? "border-[#E59866] dark:border-[#C47D3B] bg-[#FDF6E2] dark:bg-[#2A2016]"
             : "border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] hover:border-[#1F3A52] dark:hover:border-[#7A9BB5]"

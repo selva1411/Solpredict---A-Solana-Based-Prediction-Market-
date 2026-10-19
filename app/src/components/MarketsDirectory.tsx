@@ -199,7 +199,7 @@ export default function MarketsDirectory({
         {/* Search + Sort + Filters toolbar */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3">
           {/* Search bar */}
-          <div className="flex-1 flex items-center gap-2 px-3 h-9 rounded-[3px] bg-[#FFFFFF] dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] focus-within:border-[#1F3A52] dark:focus-within:border-[#7A9BB5]">
+          <div className="flex-1 flex items-center gap-2 px-3 h-9 rounded-[3px] bg-[#FFFFFF] dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] shadow-xs focus-within:border-[#1F3A52] dark:focus-within:border-[#7A9BB5] focus-within:ring-1 focus-within:ring-[#1F3A52]/20 dark:focus-within:ring-[#7A9BB5]/30 transition-all">
             <Search className="w-3.5 h-3.5 text-[#2C3138] dark:text-[#68707B] shrink-0" />
             <input
               type="text"
@@ -221,12 +221,12 @@ export default function MarketsDirectory({
           </div>
 
           {/* Sort pills */}
-          <div className="flex items-center gap-1 p-0.5 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-1 p-0.5 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1A1D21] border border-[#E2DFD7] dark:border-[#2A2F36] overflow-x-auto no-scrollbar shadow-xs">
             {SORT_OPTIONS.map(({ key, label }) => (
               <button
                 key={key}
                 onClick={() => setSortBy(key)}
-                className={`shrink-0 px-2.5 h-7 rounded-[2px] font-sans text-[11px] font-semibold transition-colors cursor-pointer ${
+                className={`shrink-0 px-2.5 h-7 rounded-[2px] font-sans text-[11px] font-semibold transition-all cursor-pointer ${
                   sortBy === key
                     ? "bg-white dark:bg-[#21252A] text-[#1F3A52] dark:text-[#7A9BB5] shadow-xs font-semibold"
                     : "text-[#181B1F] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3]"
@@ -240,10 +240,10 @@ export default function MarketsDirectory({
           {/* Filter toggle */}
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-2 px-3 h-9 rounded-[3px] font-sans text-[12px] font-semibold transition-colors cursor-pointer border ${
+            className={`flex items-center gap-2 px-3 h-9 rounded-[3px] font-sans text-[12px] font-semibold transition-all cursor-pointer border shadow-xs active:scale-[0.98] ${
               showFilters || activeFilters.length > 0
                 ? "border-[#1F3A52] bg-[#F1EFEA] dark:bg-[#21252A] text-[#1F3A52] dark:text-[#7A9BB5] dark:border-[#7A9BB5]"
-                : "border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#181B1F] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3]"
+                : "border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] text-[#181B1F] dark:text-[#9AA1AA] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:border-[#1F3A52]/30"
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />

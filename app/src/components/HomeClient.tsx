@@ -101,13 +101,14 @@ export default function HomeClient({
       />
 
       {/* ── EDITORIAL FINANCIAL HERO ── */}
-      <section className="relative border-b border-[#E2DFD7] dark:border-[#2A2F36] py-10 sm:py-14 bg-white dark:bg-[#16181C]">
+      <section className="relative overflow-hidden border-b border-[#E2DFD7] dark:border-[#2A2F36] py-11 sm:py-15 bg-gradient-to-b from-white via-[#FCFBF8] to-[#F8F7F4] dark:from-[#16181C] dark:via-[#131518] dark:to-[#0F1013]">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,_rgba(31,58,82,0.07),_transparent)] dark:bg-[radial-gradient(ellipse_60%_50%_at_50%_-10%,_rgba(122,155,181,0.12),_transparent)]" />
         <div className="relative mx-auto max-w-[1360px] px-4 sm:px-6">
           <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-8">
             <div className="max-w-2xl space-y-5">
               {/* Live Status Tag */}
-              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1F2329] border border-[#E2DFD7] dark:border-[#2E353F]">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1D7C59]" />
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-[3px] bg-[#F1EFEA] dark:bg-[#1F2329] border border-[#E2DFD7] dark:border-[#2E353F] shadow-xs">
+                <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#1D7C59] animate-pulse" />
                 <span className="text-[10px] text-[#555D65] dark:text-[#9AA1AA] font-semibold font-mono tracking-wider">
                   SOLANA DEVNET · AMM V1 ACTIVE · PYTH ORACLES
                 </span>
@@ -131,13 +132,13 @@ export default function HomeClient({
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
                 <Link
                   href="/markets"
-                  className="inline-flex items-center gap-1.5 px-4 h-9 rounded-[3px] bg-[#1F3A52] hover:bg-[#16293B] text-white font-medium text-[12px] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 h-9 rounded-[3px] bg-[#1F3A52] hover:bg-[#16293B] text-white font-medium text-[12px] shadow-sm hover:shadow active:scale-[0.98] transition-all cursor-pointer"
                 >
                   Explore Markets <ArrowRight className="w-3.5 h-3.5" />
                 </Link>
                 <Link
                   href="/create"
-                  className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] text-[#181A1C] dark:text-[#EAE8E3] font-medium text-[12px] transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#FFFFFF] dark:bg-[#1A1D21] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] text-[#181A1C] dark:text-[#EAE8E3] font-medium text-[12px] active:scale-[0.98] transition-all cursor-pointer shadow-xs"
                 >
                   + Propose Market
                 </Link>
@@ -146,7 +147,7 @@ export default function HomeClient({
 
             {/* ── STAT RAIL — 4 Flat Editorial Metric Tiles ── */}
             <div className="grid grid-cols-2 gap-2.5 w-full lg:w-[460px]">
-              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+              <div className="p-3.5 rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4]/90 dark:bg-[#1A1D21]/90 backdrop-blur-xs flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#1F3A52]/30 dark:hover:border-[#7A9BB5]/40">
                 <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
                   Active Lines
                   <Activity className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
@@ -159,7 +160,7 @@ export default function HomeClient({
                 <span className="text-[10px] text-[#1D7C59] font-mono mt-0.5">● Live on devnet</span>
               </div>
 
-              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+              <div className="p-3.5 rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4]/90 dark:bg-[#1A1D21]/90 backdrop-blur-xs flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#1F3A52]/30 dark:hover:border-[#7A9BB5]/40">
                 <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
                   24h Volume
                   <Flame className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
@@ -176,7 +177,7 @@ export default function HomeClient({
                 <span className="text-[10px] text-[#7F8892] dark:text-[#68707B] font-mono mt-0.5">24h volume traded</span>
               </div>
 
-              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+              <div className="p-3.5 rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4]/90 dark:bg-[#1A1D21]/90 backdrop-blur-xs flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#1F3A52]/30 dark:hover:border-[#7A9BB5]/40">
                 <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
                   Total Volume
                   <Layers className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />
@@ -193,7 +194,7 @@ export default function HomeClient({
                 <span className="text-[10px] text-[#7F8892] dark:text-[#68707B] font-mono mt-0.5">Lifetime settled</span>
               </div>
 
-              <div className="p-3.5 rounded-[3px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4] dark:bg-[#1A1D21] flex flex-col justify-between">
+              <div className="p-3.5 rounded-[4px] border border-[#E2DFD7] dark:border-[#2A2F36] bg-[#F8F7F4]/90 dark:bg-[#1A1D21]/90 backdrop-blur-xs flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md hover:border-[#1F3A52]/30 dark:hover:border-[#7A9BB5]/40">
                 <span className="flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-[#7F8892] dark:text-[#9AA1AA]">
                   Traders
                   <Users className="w-3.5 h-3.5 text-[#1F3A52] dark:text-[#7A9BB5]" />

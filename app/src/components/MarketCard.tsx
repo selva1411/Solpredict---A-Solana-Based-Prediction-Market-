@@ -78,18 +78,18 @@ export const MarketCard = memo(function MarketCard({
     <motion.div
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.14, delay: Math.min(index * 0.015, 0.15) }}
+      transition={{ duration: 0.18, delay: Math.min(index * 0.015, 0.15) }}
       onClick={onClick}
-      className={`group relative cursor-pointer flex flex-col justify-between rounded-[3px] p-4 bg-white dark:bg-[#1A1D21] border transition-colors duration-150 select-none ${
+      className={`group relative cursor-pointer flex flex-col justify-between rounded-[4px] p-4.5 bg-white dark:bg-[#1A1D21] border transition-all duration-200 select-none hover:-translate-y-1 hover:shadow-lg dark:hover:shadow-[0_8px_24px_rgba(0,0,0,0.35)] ${
         selected
-          ? "border-[#1F3A52] dark:border-[#7A9BB5] ring-1 ring-[#1F3A52] dark:ring-[#7A9BB5]"
-          : "border-[#E2DFD7] dark:border-[#2A2F36] hover:border-[#B8B4A8] dark:hover:border-[#3E4550]"
+          ? "border-[#1F3A52] dark:border-[#7A9BB5] ring-2 ring-[#1F3A52]/20 dark:ring-[#7A9BB5]/30 shadow-sm"
+          : "border-[#E2DFD7] dark:border-[#2A2F36] hover:border-[#1F3A52]/40 dark:hover:border-[#7A9BB5]/40"
       }`}
     >
       <div>
         {/* Top bar: Category badge + Expiry badge + Star */}
         <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-[2px] bg-[#F1EFEA] dark:bg-[#21252A] border border-[#E2DFD7] dark:border-[#2E353F]">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[3px] bg-[#F1EFEA] dark:bg-[#21252A] border border-[#E2DFD7] dark:border-[#2E353F] transition-colors group-hover:border-[#1F3A52]/25 dark:group-hover:border-[#7A9BB5]/30">
             <span className="w-1.5 h-1.5 rounded-full bg-[#1F3A52] dark:bg-[#7A9BB5] flex-shrink-0" />
             <span className="text-[10px] font-mono uppercase tracking-wider text-[#0A0B0D] dark:text-[#9AA1AA] font-bold">
               {market.category}
@@ -107,8 +107,8 @@ export const MarketCard = memo(function MarketCard({
                   Cancelled
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#2D3136] dark:text-[#68707B]">
-                  <Clock className="w-3 h-3 text-[#2D3136] dark:text-[#68707B]" />
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-[#2D3136] dark:text-[#8B949E] bg-[#F8F7F4] dark:bg-[#15181C] px-1.5 py-0.5 rounded border border-[#E2DFD7]/70 dark:border-[#2A2F36]/70">
+                  <Clock className="w-3 h-3 text-[#1F3A52] dark:text-[#7A9BB5]" />
                   <TimeLeft endDate={market.endDate} />
                 </span>
               )}
@@ -116,12 +116,12 @@ export const MarketCard = memo(function MarketCard({
 
             <button
               onClick={handleStarClick}
-              className="p-1 rounded-[2px] text-[#2D3136] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] transition-colors cursor-pointer"
+              className="p-1 rounded-[3px] text-[#2D3136] hover:text-[#0A0B0D] dark:hover:text-[#EAE8E3] hover:bg-[#F1EFEA] dark:hover:bg-[#21252A] transition-colors cursor-pointer"
               aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
             >
               <Star
-                className={`w-3.5 h-3.5 transition-colors ${
-                  watched ? "fill-[#1F3A52] text-[#1F3A52] dark:fill-[#7A9BB5] dark:text-[#7A9BB5]" : ""
+                className={`w-3.5 h-3.5 transition-all ${
+                  watched ? "fill-[#B26A20] text-[#B26A20] scale-110" : ""
                 }`}
               />
             </button>
@@ -129,19 +129,19 @@ export const MarketCard = memo(function MarketCard({
         </div>
 
         {/* Market Question */}
-        <h3 className="font-sans font-semibold text-[14px] sm:text-[15px] leading-[1.35] text-[#0A0B0D] dark:text-[#EAE8E3] group-hover:text-[#1F3A52] dark:group-hover:text-[#7A9BB5] transition-colors line-clamp-2 min-h-[42px] mb-3">
+        <h3 className="font-sans font-semibold text-[14px] sm:text-[15px] leading-[1.38] text-[#0A0B0D] dark:text-[#EAE8E3] group-hover:text-[#1F3A52] dark:group-hover:text-[#7A9BB5] transition-colors line-clamp-2 min-h-[42px] mb-3">
           {market.question}
         </h3>
 
         {/* Probability Dual Progress Rule */}
         <div className="mb-2.5">
-          <div className="h-1 w-full rounded-[1px] overflow-hidden bg-[#E2DFD7] dark:bg-[#2A2F36] flex">
+          <div className="h-1.5 w-full rounded-full overflow-hidden bg-[#E2DFD7] dark:bg-[#2A2F36] flex">
             <div
-              className="h-full transition-all duration-300 bg-[#1D7C59]"
+              className="h-full transition-all duration-500 bg-gradient-to-r from-[#1D7C59] to-[#259D71]"
               style={{ width: `${displayYesPct}%` }}
             />
             <div
-              className="h-full transition-all duration-300 bg-[#B43C34]"
+              className="h-full transition-all duration-500 bg-gradient-to-r from-[#CC473D] to-[#B43C34]"
               style={{ width: `${displayNoPct}%` }}
             />
           </div>
@@ -150,7 +150,7 @@ export const MarketCard = memo(function MarketCard({
         {/* ── FLAT OUTCOME TILES (Editorial / Financial style) ── */}
         <div className="grid grid-cols-2 gap-2 mb-3.5">
           {/* YES Tile */}
-          <div className="rounded-[3px] p-2 bg-[#EDF6F1] dark:bg-[rgba(29,124,89,0.12)] border border-[#BCDDCF] dark:border-[#1D7C59]/30 transition-colors flex flex-col justify-between">
+          <div className="rounded-[3px] p-2 bg-[#EDF6F1] dark:bg-[rgba(29,124,89,0.12)] border border-[#BCDDCF] dark:border-[#1D7C59]/30 transition-all duration-150 hover:bg-[#E3F2E9] dark:hover:bg-[rgba(29,124,89,0.18)] hover:scale-[1.01] flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] font-mono">
               <span className="font-semibold text-[#0F5A3E] dark:text-[#52B788] uppercase tracking-wider">{yesLabel}</span>
               <span className="text-[10px] text-[#0F5A3E] dark:text-[#52B788]/80 font-mono font-medium">
@@ -168,7 +168,7 @@ export const MarketCard = memo(function MarketCard({
           </div>
 
           {/* NO Tile */}
-          <div className="rounded-[3px] p-2 bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.12)] border border-[#ECCDC9] dark:border-[#B43C34]/30 transition-colors flex flex-col justify-between">
+          <div className="rounded-[3px] p-2 bg-[#FBF1F0] dark:bg-[rgba(180,60,52,0.12)] border border-[#ECCDC9] dark:border-[#B43C34]/30 transition-all duration-150 hover:bg-[#F7E7E5] dark:hover:bg-[rgba(180,60,52,0.18)] hover:scale-[1.01] flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] font-mono">
               <span className="font-semibold text-[#8E261F] dark:text-[#E57373] uppercase tracking-wider">{noLabel}</span>
               <span className="text-[10px] text-[#8E261F] dark:text-[#E57373]/80 font-mono font-medium">
@@ -196,7 +196,7 @@ export const MarketCard = memo(function MarketCard({
         <div className="flex items-center gap-2 text-[#2D3136]">
           <CreatedLabel createdAt={market.createdAt} />
           <span className="inline-flex items-center gap-0.5 text-[11px] font-mono font-medium text-[#1F3A52] dark:text-[#7A9BB5] opacity-0 group-hover:opacity-100 transition-opacity">
-            Trade <ArrowUpRight className="w-3.5 h-3.5" />
+            Trade <ArrowUpRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-200" />
           </span>
         </div>
       </div>
