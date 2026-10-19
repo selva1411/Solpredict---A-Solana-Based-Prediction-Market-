@@ -3,6 +3,7 @@ use anchor_lang::prelude::*;
 // ============================================================================
 // PDA Seeds — every seed used for PDA derivation across the program.
 // Frontend's lib/pda.ts MUST mirror these byte-for-byte.
+// 
 // ============================================================================
 
 #[constant]
