@@ -26,25 +26,29 @@ export function isFeeWithdrawn(marketPubkey: string): boolean {
 
 /**
  * Marks the market as having its fees withdrawn.
- *  1. Updates the local in-memory cache immediately (so the current
- *     request sees the change without waiting for an async DB write).
- *  2. Persists `fee_withdrawn = true` to the DB so future server
- *     instances / hot-reloads also see the correct state.
+ *  1. Updates the local in-memory cache immediately.
+ *  2. Persists `fee_withdrawn = true` to the DB and returns the Promise
+ *     so callers can await the write before sending a response.
+ *     This prevents the race condition in serverless deployments where
+ *     the client re-fetches markets before the DB write has committed.
  */
-export function markFeeWithdrawn(marketPubkey: string): void {
+export async function markFeeWithdrawn(marketPubkey: string): Promise<void> {
   if (!marketPubkey) return;
 
   // 1. Fast in-process cache
   feeWithdrawnSet.add(marketPubkey);
 
-  // 2. Durable DB write (fire-and-forget; errors are logged but not thrown)
+  // 2. Durable DB write — awaited so the API route doesn't return until
+  //    the write is committed. Errors are caught and logged, not thrown.
   if (db) {
-    db.update(marketsCache)
-      .set({ feeWithdrawn: true, updatedAt: new Date() })
-      .where(eq(marketsCache.marketPubkey, marketPubkey))
-      .catch((err: unknown) => {
-        logger.warn(`markFeeWithdrawn DB write failed for ${marketPubkey}:`, err);
-      });
+    try {
+      await db
+        .update(marketsCache)
+        .set({ feeWithdrawn: true, updatedAt: new Date() })
+        .where(eq(marketsCache.marketPubkey, marketPubkey));
+    } catch (err: unknown) {
+      logger.warn(`markFeeWithdrawn DB write failed for ${marketPubkey}:`, err);
+    }
   }
 }
 

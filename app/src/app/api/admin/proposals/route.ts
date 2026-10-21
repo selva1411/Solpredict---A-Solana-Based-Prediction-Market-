@@ -245,7 +245,7 @@ export const POST = apiHandler(async (req: NextRequest) => {
         };
         const { markFeeWithdrawn } = await import("@/lib/db/fee-withdrawn-store");
         if (mPubkey) {
-          markFeeWithdrawn(mPubkey);
+          await markFeeWithdrawn(mPubkey);
         }
 
         if (recipientWallet && amountLamports && amountLamports > 0) {
