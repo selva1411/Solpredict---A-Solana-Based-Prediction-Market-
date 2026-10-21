@@ -5,6 +5,7 @@ import { logger } from "@/lib/logger";
 import { getMarketPda } from "@/lib/pda";
 import * as anchor from "@coral-xyz/anchor";
 import { ENV } from "@/lib/env";
+import { warmFeeWithdrawnCache } from "./fee-withdrawn-store";
 
 export interface MarketCacheEntry {
   marketPubkey: string;
@@ -32,6 +33,7 @@ export interface MarketCacheEntry {
   noSupply?: number;
   yesPoolSol?: number;
   noPoolSol?: number;
+  feeWithdrawn?: boolean;
 }
 
 export async function getAllMarkets(options?: {
@@ -111,6 +113,10 @@ export async function getAllMarkets(options?: {
       }
     } catch {}
 
+    // Warm the in-memory fee-withdrawn cache so subsequent isFeeWithdrawn()
+    // calls within the same process are served from memory, not the DB.
+    warmFeeWithdrawnCache().catch(() => {});
+
     return rows.map((r) => {
       const vol = Number(r.totalVolume ?? 0);
       const tStats = tradeStatsMap.get(r.marketPubkey);
@@ -139,6 +145,7 @@ export async function getAllMarkets(options?: {
         noSupply: r.noSupply ?? 0,
         yesPoolSol: (r.yesPoolLamports ?? 0) / 1e9,
         noPoolSol: (r.noPoolLamports ?? 0) / 1e9,
+        feeWithdrawn: r.feeWithdrawn ?? false,
       };
     });
   } catch (e) {

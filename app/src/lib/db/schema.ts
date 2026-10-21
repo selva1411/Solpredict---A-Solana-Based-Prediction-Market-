@@ -65,6 +65,7 @@ export const marketsCache = pgTable(
     watchlistCount: integer("watchlist_count").default(0),
     lpFeePoolLamports: bigint("lp_fee_pool_lamports", { mode: "number" }).default(0),
     totalLpTokens: bigint("total_lp_tokens", { mode: "number" }).default(0),
+    feeWithdrawn: boolean("fee_withdrawn").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow(),
   },
