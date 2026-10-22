@@ -1,6 +1,7 @@
 import { db } from "@/lib/db/client";
 import { SAMPLE_MARKETS } from "./sample-markets";
-import { isFeeWithdrawn } from "@/lib/db/fee-withdrawn-store";
+// Note: isFeeWithdrawn reads from DB column directly now (not in-memory Set)
+// to ensure serverless function invocations always see the correct state.
 import {
   marketsCache,
   marketOutcomes,
@@ -59,6 +60,7 @@ type MarketRow = {
   noPoolLamports: number;
   yesSupply: number;
   noSupply: number;
+  feeWithdrawn: boolean;
   totalPool: number;
   outcomes: Array<{
     outcomeIndex: number;
@@ -196,6 +198,7 @@ async function loadMarketList(
         noPoolLamports: marketsCache.noPoolLamports,
         yesSupply: marketsCache.yesSupply,
         noSupply: marketsCache.noSupply,
+        feeWithdrawn: marketsCache.feeWithdrawn,
         createdAt: marketsCache.createdAt,
       })
       .from(marketsCache)
@@ -302,7 +305,7 @@ async function loadMarketList(
       noPoolLamports: r.noPoolLamports ?? 0,
       yesSupply: r.yesSupply ?? 0,
       noSupply: r.noSupply ?? 0,
-      feeWithdrawn: isFeeWithdrawn(r.marketPubkey),
+      feeWithdrawn: r.feeWithdrawn ?? false,
       totalPool,
       outcomes:
         marketOutcomesList.length > 0
@@ -415,7 +418,7 @@ export async function getMarket(pubkey: string) {
 
     return {
       ...m,
-      feeWithdrawn: isFeeWithdrawn(m.marketPubkey),
+      feeWithdrawn: Boolean(m.feeWithdrawn),
       totalVolume,
       openInterest: Number(m.openInterest ?? 0),
       yesPoolSol,
