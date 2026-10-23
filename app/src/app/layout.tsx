@@ -55,7 +55,6 @@ export const metadata: Metadata = {
   title: "SOLPREDICT — Live Prediction Exchange on Solana",
   description:
     "The live prediction exchange on Solana. Trade YES/NO on crypto, sports, politics and more. CPMM pricing, Pyth oracle resolution, instant on-chain settlement.",
-  manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -71,6 +70,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" crossOrigin="use-credentials" />
         <Script
           id="perf-measure-fix"
           strategy="beforeInteractive"
