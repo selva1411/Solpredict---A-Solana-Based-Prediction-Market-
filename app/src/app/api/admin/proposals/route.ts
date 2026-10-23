@@ -243,10 +243,14 @@ export const POST = apiHandler(async (req: NextRequest) => {
           recipientWallet?: string;
           amountLamports?: number;
         };
-        const { markFeeWithdrawn } = await import("@/lib/db/fee-withdrawn-store");
-        if (mPubkey) {
-          await markFeeWithdrawn(mPubkey);
+        const { isFeeWithdrawn, markFeeWithdrawn } = await import("@/lib/db/fee-withdrawn-store");
+
+        // Reject if fees for this market have already been withdrawn
+        if ((mPubkey && isFeeWithdrawn(mPubkey)) || (marketId && isFeeWithdrawn(String(marketId)))) {
+          return badRequest("Protocol fees have already been withdrawn for this market");
         }
+
+        await markFeeWithdrawn(mPubkey, marketId ? Number(marketId) : undefined);
 
         if (recipientWallet && amountLamports && amountLamports > 0) {
           const { addWalletCredit } = await import("@/lib/db/wallet-credits-store");

@@ -1592,6 +1592,41 @@ function AdminPage() {
       toast.error("Please connect an admin wallet first.");
       return;
     }
+    if (market.account.feeWithdrawn) {
+      toast.info("Protocol fees have already been collected for this market.");
+      return;
+    }
+    if (withdrawing) {
+      return;
+    }
+
+    const marketKeyStr = market.publicKey.toBase58();
+    const marketIdNum = market.account.marketId ? market.account.marketId.toNumber() : -1;
+
+    const feeLamports = market.account.feeCollected
+      ? market.account.feeCollected.toNumber()
+      : Math.round(((market.account as any).totalVolume || 0) * 1e9 * 0.02);
+    const feeSol = lamportsToSol(feeLamports);
+
+    if (feeLamports <= 0) {
+      toast.info("No fees available to withdraw for this market.");
+      return;
+    }
+
+    // 1. Immediately flip UI button state to "Withdrawn" on the first click so it cannot be double-clicked
+    setMarkets((prev) =>
+      prev.map((m) => {
+        const mId = m.account.marketId ? m.account.marketId.toNumber() : -2;
+        if (m.publicKey.toBase58() === marketKeyStr || (marketIdNum > 0 && mId === marketIdNum)) {
+          return { ...m, account: { ...m.account, feeWithdrawn: true } };
+        }
+        return m;
+      })
+    );
+
+    // 2. Immediately update header SOL balance on click
+    triggerWalletBalanceRefresh(feeLamports);
+
     setWithdrawing(true);
     try {
       let marketKeyToUse = market.publicKey;
@@ -1613,11 +1648,6 @@ function AdminPage() {
       if (!accInfo) {
         // Market is in database cache but not currently on-chain.
         // Process withdrawal via authenticated admin API and credit the admin wallet balance.
-        const feeLamports = market.account.feeCollected
-          ? market.account.feeCollected.toNumber()
-          : Math.round(((market.account as any).totalVolume || 0) * 1e9 * 0.02);
-        const feeSol = lamportsToSol(feeLamports);
-
         let sig = "admin-auth-" + Date.now().toString(36);
         // Optional gasless message signing if supported
         if (wallet.signMessage) {
@@ -1630,6 +1660,17 @@ function AdminPage() {
           } catch (signErr: any) {
             const errStr = String(signErr?.message || signErr || "");
             if (errStr.includes("User rejected") || errStr.includes("User denied")) {
+              // Revert optimistic state if user cancelled
+              setMarkets((prev) =>
+                prev.map((m) => {
+                  const mId = m.account.marketId ? m.account.marketId.toNumber() : -2;
+                  if (m.publicKey.toBase58() === marketKeyStr || (marketIdNum > 0 && mId === marketIdNum)) {
+                    return { ...m, account: { ...m.account, feeWithdrawn: false } };
+                  }
+                  return m;
+                })
+              );
+              forceWalletBalanceRefresh();
               toast.info("Fee withdrawal cancelled in wallet.");
               return;
             }
@@ -1647,7 +1688,7 @@ function AdminPage() {
           }),
         }).catch(() => null);
 
-        await adminFetch("/api/admin/proposals", {
+        const propRes = await adminFetch("/api/admin/proposals", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1659,20 +1700,18 @@ function AdminPage() {
           }),
         }).catch(() => null);
 
-        // Optimistically flip feeWithdrawn in local state so UI updates immediately
-        setMarkets((prev) =>
-          prev.map((m) =>
-            m.publicKey.toBase58() === marketKeyToUse.toBase58()
-              ? { ...m, account: { ...m.account, feeWithdrawn: true } }
-              : m
-          )
-        );
+        if (propRes && !propRes.ok) {
+          const errData = await propRes.json().catch(() => ({}));
+          if (errData?.error?.includes("already")) {
+            toast.info("Protocol fees have already been collected for this market.");
+            return;
+          }
+        }
 
         toast.success(
           `Protocol fees successfully collected! (${feeSol.toFixed(3)} SOL)`
         );
-        // Refresh connected wallet's balance across entire UI with the collected fee
-        triggerWalletBalanceRefresh(feeLamports);
+
         notifyAppActivity({
           wallet: wallet.publicKey.toBase58(),
           marketPubkey: marketKeyToUse.toBase58(),
@@ -1681,10 +1720,6 @@ function AdminPage() {
         fetchConfigAndMarkets();
         return;
       }
-
-      const feeLamports = market.account.feeCollected
-        ? market.account.feeCollected.toNumber()
-        : 0;
 
       const configPda = getConfigPda(program.programId);
       const treasuryPda = getTreasuryPda(marketKeyToUse, program.programId);
@@ -1705,8 +1740,6 @@ function AdminPage() {
         `Platform protocol fees successfully withdrawn on-chain! (Tx: ${sig ? String(sig).slice(0, 8) : "confirmed"}...)`
       );
 
-      // Refresh connected wallet's balance across entire UI with the withdrawn fee
-      triggerWalletBalanceRefresh(feeLamports);
       forceWalletBalanceRefresh();
 
       if (feeLamports > 0) {
@@ -1733,15 +1766,6 @@ function AdminPage() {
         }),
       }).catch(() => null);
 
-      // Optimistically flip feeWithdrawn in local state so the button changes immediately
-      setMarkets((prev) =>
-        prev.map((m) =>
-          m.publicKey.toBase58() === marketKeyToUse.toBase58()
-            ? { ...m, account: { ...m.account, feeWithdrawn: true } }
-            : m
-        )
-      );
-
       notifyAppActivity({
         wallet: wallet.publicKey.toBase58(),
         marketPubkey: marketKeyToUse.toBase58(),
@@ -1750,6 +1774,18 @@ function AdminPage() {
 
       fetchConfigAndMarkets();
     } catch (err: unknown) {
+      // Revert optimistic updates on error
+      setMarkets((prev) =>
+        prev.map((m) => {
+          const mId = m.account.marketId ? m.account.marketId.toNumber() : -2;
+          if (m.publicKey.toBase58() === marketKeyStr || (marketIdNum > 0 && mId === marketIdNum)) {
+            return { ...m, account: { ...m.account, feeWithdrawn: false } };
+          }
+          return m;
+        })
+      );
+      forceWalletBalanceRefresh();
+
       const errStr = String((err as any)?.message || err || "");
       if (
         errStr.includes("User rejected") ||
@@ -1757,8 +1793,10 @@ function AdminPage() {
         errStr.includes("rejected the request")
       ) {
         toast.info("Fee withdrawal cancelled in wallet.");
+      } else if (errStr.includes("FeeAlreadyWithdrawn") || errStr.includes("already")) {
+        toast.info("Protocol fees have already been collected for this market.");
       } else {
-        toast.error(`Withdrawal failed: ${getFriendlyErrorMessage(err)}`);
+        toast.error(`Fee withdrawal failed: ${errStr.slice(0, 80)}`);
       }
     } finally {
       setWithdrawing(false);
@@ -3078,13 +3116,10 @@ function AdminPage() {
                                       ) : (
                                         <button
                                           onClick={() => handleWithdrawFees(m)}
-                                          className="px-2.5 py-1 bg-yellow/20 hover:bg-yellow/40 border border-yellow/40 rounded-[4px] text-[9px] text-ink font-bold cursor-pointer uppercase"
+                                          disabled={withdrawing || m.account.feeWithdrawn}
+                                          className="px-2.5 py-1 bg-yellow/20 hover:bg-yellow/40 border border-yellow/40 rounded-[4px] text-[9px] text-ink font-bold cursor-pointer uppercase disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                          Withdraw Fees (
-                                          {lamportsToSol(
-                                            m.account.feeCollected
-                                          ).toFixed(3)}{" "}
-                                          SOL)
+                                          {withdrawing ? "Processing..." : `Withdraw Fees (${lamportsToSol(m.account.feeCollected).toFixed(3)} SOL)`}
                                         </button>
                                       )}
                                     </div>

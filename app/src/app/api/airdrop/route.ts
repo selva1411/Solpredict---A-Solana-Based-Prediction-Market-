@@ -63,7 +63,20 @@ export const POST = apiHandler(async (req: NextRequest) => {
         },
         "confirmed"
       );
-      return ok({ success: true, signature: sig, amount: 2, network: "localnet" });
+      const amountLamports = 2 * LAMPORTS_PER_SOL;
+      try {
+        const { creditLocalBalance } = await import("@/app/api/rpc/route");
+        creditLocalBalance(targetWallet, amountLamports);
+      } catch {
+        // non-critical
+      }
+      return ok({
+        success: true,
+        signature: sig,
+        amount: 2,
+        amountLamports,
+        network: "localnet",
+      });
     } catch (err: any) {
       return ok({ success: false, error: err?.message || String(err) });
     }
@@ -81,7 +94,20 @@ export const POST = apiHandler(async (req: NextRequest) => {
       },
       "confirmed"
     );
-    return ok({ success: true, signature: sig, amount: 0.5, source: "rpc" });
+    const amountLamports = Math.round(0.5 * LAMPORTS_PER_SOL);
+    try {
+      const { creditLocalBalance } = await import("@/app/api/rpc/route");
+      creditLocalBalance(targetWallet, amountLamports);
+    } catch {
+      // non-critical
+    }
+    return ok({
+      success: true,
+      signature: sig,
+      amount: 0.5,
+      amountLamports,
+      source: "rpc",
+    });
   } catch {
     // Devnet public RPC rate-limited or faucet dry, continue to fallback
   }
@@ -103,10 +129,17 @@ export const POST = apiHandler(async (req: NextRequest) => {
         const sig = await sendAndConfirmTransaction(connection, tx, [funder], {
           commitment: "confirmed",
         });
+        try {
+          const { creditLocalBalance } = await import("@/app/api/rpc/route");
+          creditLocalBalance(targetWallet, dispenseLamports);
+        } catch {
+          // non-critical
+        }
         return ok({
           success: true,
           signature: sig,
           amount: 0.05,
+          amountLamports: dispenseLamports,
           source: "server_faucet",
         });
       }

@@ -4,8 +4,12 @@ import React, { useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { toast } from "sonner";
-import { Droplets, ExternalLink, Copy, Check, X } from "lucide-react";
-import { triggerWalletBalanceRefresh } from "@/hooks/useWalletBalance";
+import { Droplets, ExternalLink, Copy, Check, X, RotateCw } from "lucide-react";
+import {
+  triggerWalletBalanceRefresh,
+  forceWalletBalanceRefresh,
+  useWalletBalance,
+} from "@/hooks/useWalletBalance";
 
 /**
  * AirdropSolButton: Airdrops test SOL on Devnet and Localnet.
@@ -14,9 +18,11 @@ import { triggerWalletBalanceRefresh } from "@/hooks/useWalletBalance";
 export function AirdropSolButton() {
   const { publicKey } = useWallet();
   const { setVisible } = useWalletModal();
+  const { formattedSol, refetch } = useWalletBalance();
   const [busy, setBusy] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [refreshingModal, setRefreshingModal] = useState(false);
 
   // Hidden only on mainnet
   if (process.env.NEXT_PUBLIC_CLUSTER === "mainnet-beta") return null;
@@ -27,6 +33,23 @@ export function AirdropSolButton() {
     setCopied(true);
     toast.success("Wallet address copied to clipboard!");
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    forceWalletBalanceRefresh();
+  };
+
+  const handleRefreshBalanceInModal = async () => {
+    if (refreshingModal) return;
+    setRefreshingModal(true);
+    try {
+      forceWalletBalanceRefresh();
+      await refetch();
+      toast.success("Wallet balance refreshed!");
+    } finally {
+      setTimeout(() => setRefreshingModal(false), 500);
+    }
   };
 
   const onAirdrop = async () => {
@@ -53,12 +76,21 @@ export function AirdropSolButton() {
       const data = await res.json().catch(() => null);
 
       if (res.ok && data?.success) {
-        const amount = data.amount ?? "test";
-        toast.success(`Successfully received ${amount} Devnet SOL!`, {
+        const amountSol = typeof data.amount === "number" ? data.amount : 0.05;
+        const amountLamports =
+          typeof data.amountLamports === "number"
+            ? data.amountLamports
+            : Math.round(amountSol * 1e9);
+
+        toast.success(`Successfully received ${amountSol} Devnet SOL!`, {
           id: "airdrop",
           description: data.signature ? `Tx: ${data.signature.slice(0, 16)}...` : undefined,
         });
-        triggerWalletBalanceRefresh();
+
+        // 1. Immediately update displayed header balance with the exact received amount
+        triggerWalletBalanceRefresh(amountLamports);
+        // 2. Clear RPC cache and trigger multi-stage confirmation polling
+        forceWalletBalanceRefresh();
       } else if (data?.rateLimited) {
         toast.dismiss("airdrop");
         setShowModal(true);
@@ -94,8 +126,8 @@ export function AirdropSolButton() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
           <div className="bg-[#FFFFFF] dark:bg-[#16181B] border border-[#E2DFD7] dark:border-[#2A2F36] rounded-lg max-w-md w-full p-5 shadow-2xl relative">
             <button
-              onClick={() => setShowModal(false)}
-              className="absolute top-3.5 right-3.5 text-[#888] hover:text-[#222] dark:hover:text-[#fff] transition-colors"
+              onClick={handleCloseModal}
+              className="absolute top-3.5 right-3.5 text-[#888] hover:text-[#222] dark:hover:text-[#fff] transition-colors cursor-pointer"
             >
               <X className="w-4 h-4" />
             </button>
@@ -107,9 +139,15 @@ export function AirdropSolButton() {
               </h3>
             </div>
 
-            <p className="text-xs text-[#555D65] dark:text-[#9AA1AA] mb-4 leading-relaxed">
+            <p className="text-xs text-[#555D65] dark:text-[#9AA1AA] mb-3 leading-relaxed">
               The public Devnet RPC is currently rate-limited. You can claim free Devnet SOL instantly using any of the official faucets below:
             </p>
+
+            {/* Current Balance Display in Modal */}
+            <div className="flex items-center justify-between text-xs font-mono bg-[#F6F5F2] dark:bg-[#202327] rounded p-2.5 border border-[#E2DFD7] dark:border-[#2F343B] mb-3">
+              <span className="text-[#555D65] dark:text-[#9AA1AA]">Current Header Balance:</span>
+              <span className="font-bold text-[#181A1C] dark:text-[#EAE8E3]">{formattedSol} SOL</span>
+            </div>
 
             {/* Wallet copy box */}
             <div className="bg-[#F6F5F2] dark:bg-[#202327] rounded p-2.5 flex items-center justify-between border border-[#E2DFD7] dark:border-[#2F343B] mb-4">
@@ -118,7 +156,7 @@ export function AirdropSolButton() {
               </div>
               <button
                 onClick={onCopyAddress}
-                className="flex items-center gap-1 text-[11px] font-semibold text-[#1F3A52] dark:text-[#7A9BB5] hover:underline shrink-0"
+                className="flex items-center gap-1 text-[11px] font-semibold text-[#1F3A52] dark:text-[#7A9BB5] hover:underline shrink-0 cursor-pointer"
               >
                 {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
                 {copied ? "Copied" : "Copy"}
@@ -158,10 +196,21 @@ export function AirdropSolButton() {
               </a>
             </div>
 
-            <div className="mt-4 pt-3 border-t border-[#E2DFD7] dark:border-[#2A2F36] flex justify-end">
+            <div className="mt-4 pt-3 border-t border-[#E2DFD7] dark:border-[#2A2F36] flex items-center justify-between">
               <button
-                onClick={() => setShowModal(false)}
-                className="px-3 py-1.5 rounded bg-[#181A1C] dark:bg-[#EAE8E3] text-white dark:text-black font-semibold text-xs cursor-pointer hover:opacity-90"
+                type="button"
+                onClick={handleRefreshBalanceInModal}
+                disabled={refreshingModal}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-[#E2DFD7] dark:border-[#2A2F36] hover:bg-black/5 dark:hover:bg-white/5 text-xs font-semibold text-[#181A1C] dark:text-[#EAE8E3] cursor-pointer transition-colors"
+                title="Refresh current balance"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${refreshingModal ? "animate-spin" : ""}`} />
+                <span>{refreshingModal ? "Checking..." : "Refresh Balance"}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCloseModal}
+                className="px-4 py-1.5 rounded bg-[#181A1C] dark:bg-[#EAE8E3] text-white dark:text-black font-semibold text-xs cursor-pointer hover:opacity-90 transition-opacity"
               >
                 Done
               </button>

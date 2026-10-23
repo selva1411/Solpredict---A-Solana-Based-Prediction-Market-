@@ -315,7 +315,7 @@ export function useWalletBalance(): WalletBalanceState {
         }).catch(() => {});
 
         const currentCached =
-          balanceCache.get(pubkeyStr) ?? getStoredBalance(pubkeyStr) ?? 0;
+          balanceLamports ?? balanceCache.get(pubkeyStr) ?? getStoredBalance(pubkeyStr) ?? 0;
         const newTotal = currentCached + delta;
         balanceCache.set(pubkeyStr, newTotal);
         setStoredBalance(pubkeyStr, newTotal);
@@ -339,6 +339,15 @@ export function useWalletBalance(): WalletBalanceState {
     };
     window.addEventListener(BALANCE_REFRESH_EVENT, handleRefresh as EventListener);
 
+    // Re-check balance automatically when user returns to tab (e.g. from an external faucet or block explorer)
+    const onWindowFocusOrVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (!isMountedRef.current || !publicKey) return;
+      void fetchBalance(true);
+    };
+    window.addEventListener("focus", onWindowFocusOrVisible);
+    document.addEventListener("visibilitychange", onWindowFocusOrVisible);
+
     // Periodic polling every 15 seconds
     const interval = setInterval(() => {
       void fetchBalance();
@@ -347,6 +356,8 @@ export function useWalletBalance(): WalletBalanceState {
     return () => {
       isMountedRef.current = false;
       window.removeEventListener(BALANCE_REFRESH_EVENT, handleRefresh);
+      window.removeEventListener("focus", onWindowFocusOrVisible);
+      document.removeEventListener("visibilitychange", onWindowFocusOrVisible);
       refreshTimers.forEach(clearTimeout);
       clearInterval(interval);
       if (subId !== null) {

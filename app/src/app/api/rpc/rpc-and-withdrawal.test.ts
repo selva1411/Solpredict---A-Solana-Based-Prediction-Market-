@@ -117,6 +117,24 @@ describe("RPC cache invalidation and wallet balance refresh flow", () => {
     const data = await res.json();
     expect(data.ok).toBe(true);
     expect(data.action).toBe("withdraw_fees");
+
+    // Second withdrawal attempt must be rejected to prevent duplicate fee withdrawals
+    const reqDuplicate = new NextRequest("http://localhost:3001/api/admin/proposals", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-wallet": "dad8hrG9n3xoJcUVSZcVcoQQxbBhMS7CEypM2HR3wqf",
+      },
+      body: JSON.stringify({
+        action: "withdraw_fees",
+        marketId: 65,
+        marketPubkey: "4SD2NEJZbJJYgE5ZgiA4htT6Y4EZtCTaUHAm2uQdHeZF",
+      }),
+    });
+    const resDuplicate = await proposalPost(reqDuplicate, {} as any);
+    expect(resDuplicate.status).toBe(400);
+    const errData = await resDuplicate.json();
+    expect(errData.error).toContain("already been withdrawn");
   });
 
   it("returns stable, consistent balance across repeated refresh button clicks", async () => {
@@ -225,5 +243,58 @@ describe("RPC cache invalidation and wallet balance refresh flow", () => {
     expect(bustRes.status).toBe(200);
     const bustData = await bustRes.json();
     expect(bustData.result).toBe(true);
+  });
+
+  it("credits wallet balance and returns amountLamports on airdrop", async () => {
+    const { POST: airdropPost } = await import("../airdrop/route");
+    const testWallet = "AirdropUser" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+    const airdropReq = new NextRequest("http://localhost:3001/api/airdrop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet: testWallet }),
+    });
+
+    // Invalid wallet check
+    const badReq = new NextRequest("http://localhost:3001/api/airdrop", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wallet: "" }),
+    });
+    const badRes = await airdropPost(badReq, {} as any);
+    expect(badRes.status).toBe(400);
+
+    // Initial query
+    const initReq = new NextRequest("http://localhost:3001/api/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "airdrop-init",
+        method: "getBalance",
+        params: [testWallet],
+      }),
+    });
+    const initRes = await rpcHandler(initReq);
+    const initData = await initRes.json();
+    const initialBal = initData.result.value;
+
+    // Simulate crediting 500,000,000 lamports (0.5 SOL faucet)
+    const { creditLocalBalance } = await import("./route");
+    creditLocalBalance(testWallet, 500_000_000);
+
+    const postReq = new NextRequest("http://localhost:3001/api/rpc", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "airdrop-post",
+        method: "getBalance",
+        params: [testWallet],
+      }),
+    });
+    const postRes = await rpcHandler(postReq);
+    const postData = await postRes.json();
+    expect(postData.result.value).toBe(initialBal + 500_000_000);
   });
 });

@@ -19,35 +19,45 @@ const feeWithdrawnSet = new Set<string>();
  * Checks the local cache first (avoids a DB round-trip during the same
  * request that just called markFeeWithdrawn).
  */
-export function isFeeWithdrawn(marketPubkey: string): boolean {
-  if (!marketPubkey) return false;
-  return feeWithdrawnSet.has(marketPubkey);
+export function isFeeWithdrawn(keyOrId?: string | number): boolean {
+  if (!keyOrId) return false;
+  const str = String(keyOrId);
+  return (
+    feeWithdrawnSet.has(str) ||
+    feeWithdrawnSet.has(`market-id-${str}`)
+  );
 }
 
 /**
  * Marks the market as having its fees withdrawn.
- *  1. Updates the local in-memory cache immediately.
- *  2. Persists `fee_withdrawn = true` to the DB and returns the Promise
- *     so callers can await the write before sending a response.
- *     This prevents the race condition in serverless deployments where
- *     the client re-fetches markets before the DB write has committed.
+ *  1. Updates the local in-memory cache immediately (by pubkey and id).
+ *  2. Persists `fee_withdrawn = true` to the DB and returns the Promise.
  */
-export async function markFeeWithdrawn(marketPubkey: string): Promise<void> {
-  if (!marketPubkey) return;
+export async function markFeeWithdrawn(marketPubkey?: string, marketId?: number): Promise<void> {
+  if (marketPubkey) {
+    feeWithdrawnSet.add(marketPubkey);
+  }
+  if (marketId !== undefined && marketId !== null) {
+    feeWithdrawnSet.add(String(marketId));
+    feeWithdrawnSet.add(`market-id-${marketId}`);
+  }
 
-  // 1. Fast in-process cache
-  feeWithdrawnSet.add(marketPubkey);
-
-  // 2. Durable DB write — awaited so the API route doesn't return until
-  //    the write is committed. Errors are caught and logged, not thrown.
   if (db) {
     try {
-      await db
-        .update(marketsCache)
-        .set({ feeWithdrawn: true, updatedAt: new Date() })
-        .where(eq(marketsCache.marketPubkey, marketPubkey));
+      if (marketPubkey) {
+        await db
+          .update(marketsCache)
+          .set({ feeWithdrawn: true, updatedAt: new Date() })
+          .where(eq(marketsCache.marketPubkey, marketPubkey));
+      }
+      if (marketId !== undefined && marketId !== null) {
+        await db
+          .update(marketsCache)
+          .set({ feeWithdrawn: true, updatedAt: new Date() })
+          .where(eq(marketsCache.marketId, Number(marketId)));
+      }
     } catch (err: unknown) {
-      logger.warn(`markFeeWithdrawn DB write failed for ${marketPubkey}:`, err);
+      logger.warn(`markFeeWithdrawn DB write failed for ${marketPubkey} (id: ${marketId}):`, err);
     }
   }
 }
