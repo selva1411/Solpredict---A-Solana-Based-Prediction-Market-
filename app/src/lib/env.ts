@@ -96,14 +96,47 @@ export const ENV = {
 
   get wsEndpoint(): string | undefined {
     const configured = process.env.NEXT_PUBLIC_WS_ENDPOINT;
-    if (!configured) return undefined;
-
-    if (typeof window !== "undefined" && isLocalHostUrl(configured)) {
-      const port = new URL(configured).port || "8900";
-      const proto = clientOrigin().startsWith("https") ? "wss" : "ws";
-      return `${proto}://${new URL(clientOrigin()).hostname}:${port}`;
+    if (configured) {
+      if (typeof window !== "undefined" && isLocalHostUrl(configured)) {
+        const port = new URL(configured).port || "8900";
+        const proto = clientOrigin().startsWith("https") ? "wss" : "ws";
+        return `${proto}://${new URL(clientOrigin()).hostname}:${port}`;
+      }
+      return configured;
     }
-    return configured;
+
+    // When running locally, point to the local validator WebSocket port
+    if (this.isLocalnet) {
+      if (typeof window !== "undefined") {
+        const proto = clientOrigin().startsWith("https") ? "wss" : "ws";
+        return `${proto}://${new URL(clientOrigin()).hostname}:8900`;
+      }
+      return process.env.LOCALNET_WS_URL || "ws://127.0.0.1:8900";
+    }
+
+    const rawRpc =
+      process.env.NEXT_PUBLIC_RPC_URL ??
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+      "";
+
+    // If an external custom RPC is configured (e.g. Helius or Quicknode), derive wss:// from it
+    if (rawRpc && !rawRpc.includes("/api/rpc") && !isLocalHostUrl(rawRpc)) {
+      try {
+        const u = new URL(rawRpc);
+        u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+        return u.toString();
+      } catch {}
+    }
+
+    // Fall back to the public cluster WebSocket endpoint so @solana/web3.js
+    // never attempts to connect to the Next.js /api/rpc HTTP route as a WebSocket.
+    if (this.cluster === "devnet") {
+      return "wss://api.devnet.solana.com";
+    }
+    if (this.cluster === "mainnet-beta") {
+      return "wss://api.mainnet-beta.solana.com";
+    }
+    return undefined;
   },
 
   get heliusApiKey(): string {
