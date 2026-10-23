@@ -1671,8 +1671,8 @@ function AdminPage() {
         toast.success(
           `Protocol fees successfully collected! (${feeSol.toFixed(3)} SOL)`
         );
-        // Refresh connected wallet's balance across entire UI — force real on-chain fetch
-        forceWalletBalanceRefresh();
+        // Refresh connected wallet's balance across entire UI with the collected fee
+        triggerWalletBalanceRefresh(feeLamports);
         notifyAppActivity({
           wallet: wallet.publicKey.toBase58(),
           marketPubkey: marketKeyToUse.toBase58(),
@@ -1705,10 +1705,11 @@ function AdminPage() {
         `Platform protocol fees successfully withdrawn on-chain! (Tx: ${sig ? String(sig).slice(0, 8) : "confirmed"}...)`
       );
 
-      // Refresh connected wallet's balance across entire UI — force real on-chain fetch
+      // Refresh connected wallet's balance across entire UI with the withdrawn fee
+      triggerWalletBalanceRefresh(feeLamports);
       forceWalletBalanceRefresh();
 
-      if (feeLamports > 0 && process.env.NEXT_PUBLIC_CLUSTER === "localnet") {
+      if (feeLamports > 0) {
         await fetch("/api/wallet/credits", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

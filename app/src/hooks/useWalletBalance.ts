@@ -204,36 +204,18 @@ export function useWalletBalance(): WalletBalanceState {
 
         const lamports = await connection.getBalance(publicKey, "confirmed");
         if (isMountedRef.current) {
-          setBalanceLamports(() => {
-            if (isForced || !IS_LOCALNET) {
-              // Trust the real on-chain result directly:
-              // - Always when force-refreshed after a real on-chain tx
-              // - Always on devnet/mainnet (credits don't apply there)
-              balanceCache.set(pubkeyStr, lamports);
-              setStoredBalance(pubkeyStr, lamports);
-              return lamports;
-            }
-
-            // --- localnet only below this point ---
+          setBalanceLamports((prev) => {
             const storedCredits = getStoredCredits(pubkeyStr);
+            const cached = balanceCache.get(pubkeyStr) ?? prev ?? null;
 
-            // Guard: Don't let a stale 2 SOL localnet placeholder overwrite a
-            // real established balance that differs from it.
-            if (
-              lamports === 2_000_000_000 &&
-              balanceCache.has(pubkeyStr) &&
-              balanceCache.get(pubkeyStr) !== 2_000_000_000
-            ) {
-              return balanceCache.get(pubkeyStr)!;
-            }
-
-            // Resolve effective lamports with localnet credits.
+            // Resolve effective lamports:
+            // Never regress the balance downwards if an optimistic credit (e.g. fee withdrawal)
+            // was just applied and on-chain state hasn't caught up yet.
             let resolvedLamports = lamports;
-            if (storedCredits > 0) {
-              const cached = balanceCache.get(pubkeyStr) ?? null;
-              if (cached !== null && lamports < cached) {
-                resolvedLamports = Math.max(lamports + storedCredits, cached);
-              }
+            if (cached !== null && cached > lamports) {
+              resolvedLamports = cached;
+            } else if (storedCredits > 0 && lamports + storedCredits > resolvedLamports) {
+              resolvedLamports = lamports + storedCredits;
             }
 
             balanceCache.set(pubkeyStr, resolvedLamports);
@@ -283,21 +265,8 @@ export function useWalletBalance(): WalletBalanceState {
       }
     }
 
-    // Initial fetch — force-mode on non-localnet to skip any stale cached credits
-    void fetchBalance(!IS_LOCALNET);
-
-    // On non-localnet, clear any stale localStorage credits from previous sessions
-    // so they can never inflate the balance again.
-    if (!IS_LOCALNET) {
-      try {
-        const creditsKey = STORAGE_CREDITS_PREFIX + key;
-        if (localStorage.getItem(creditsKey) !== null) {
-          localStorage.removeItem(creditsKey);
-        }
-      } catch {
-        // ignore
-      }
-    }
+    // Initial fetch
+    void fetchBalance(false);
 
     // Subscribe to WebSocket account changes if supported
     let subId: number | null = null;
@@ -335,25 +304,8 @@ export function useWalletBalance(): WalletBalanceState {
       const forceOnChain = Boolean(detail.forceOnChain);
       const pubkeyStr = publicKey?.toBase58();
 
-      if (forceOnChain) {
-        if (pubkeyStr) {
-          balanceCache.delete(pubkeyStr);
-        }
-        // Real on-chain transaction: fetch actual balance, skip credit overlay.
-        void fetchBalance(true);
-        const delays = [800, 2000, 4000, 7000];
-        delays.forEach((delay) => {
-          const t = setTimeout(() => {
-            if (!isMountedRef.current) return;
-            void fetchBalance(true);
-          }, delay);
-          refreshTimers.push(t);
-        });
-        return;
-      }
-
       if (typeof delta === "number" && !isNaN(delta) && delta > 0 && pubkeyStr) {
-        // Off-chain credit (airdrop faucet): optimistically bump displayed balance.
+        // Optimistically bump displayed balance immediately so the header updates right away
         addStoredCredits(pubkeyStr, delta);
         // Persist to server in background
         fetch("/api/wallet/credits", {
@@ -368,15 +320,19 @@ export function useWalletBalance(): WalletBalanceState {
         balanceCache.set(pubkeyStr, newTotal);
         setStoredBalance(pubkeyStr, newTotal);
         setBalanceLamports(newTotal);
+      } else if (forceOnChain) {
+        if (pubkeyStr) {
+          balanceCache.delete(pubkeyStr);
+        }
       }
 
-      void fetchBalance();
+      void fetchBalance(forceOnChain);
 
-      const delays = [1500, 3500];
+      const delays = forceOnChain ? [800, 2000, 4000, 7000] : [1500, 3500];
       delays.forEach((delay) => {
         const t = setTimeout(() => {
           if (!isMountedRef.current) return;
-          void fetchBalance();
+          void fetchBalance(forceOnChain);
         }, delay);
         refreshTimers.push(t);
       });

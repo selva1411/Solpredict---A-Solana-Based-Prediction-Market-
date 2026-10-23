@@ -11,6 +11,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { adminFetch } from "@/lib/admin-client";
+import { triggerWalletBalanceRefresh } from "@/hooks/useWalletBalance";
 
 interface Withdrawal {
   amountSol: number;
@@ -76,6 +77,7 @@ export default function AdminTreasuryPage() {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      triggerWalletBalanceRefresh(Math.round(amountSol * 1e9));
       load();
     } catch {
       window.alert(
