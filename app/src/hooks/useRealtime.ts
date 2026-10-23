@@ -22,6 +22,10 @@ interface RealtimeState {
 // one bundle works from localhost, a LAN IP, or a tunnel URL. The env value may
 // be baked with an absolute host (e.g. http://172.25.7.63:3001) that is only
 // reachable from one network — recompute it against window.location instead.
+//
+// The standalone WS server (port 3002) only runs in local dev environments.
+// On remote deployments (Vercel, etc.) this port is never reachable, so we
+// return "" to disable WS entirely and avoid console spam from failed retries.
 function resolveWsUrl(): string {
   const configured =
     process.env.NEXT_PUBLIC_WS_URL ||
@@ -39,6 +43,17 @@ function resolveWsUrl(): string {
     }
 
     if (isOnlyPort) {
+      // Only a port number was configured — this mode only makes sense on localhost.
+      // On remote/production hosts (e.g. Vercel) the standalone WS server is not
+      // running, so skip the connection entirely to avoid repeated failed attempts.
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
+          window.location.hostname
+        );
+      if (!isLocal) return "";
+
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       return `${proto}://${window.location.hostname}:${configured}`;
     }

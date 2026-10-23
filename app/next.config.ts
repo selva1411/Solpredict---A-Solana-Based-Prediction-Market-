@@ -8,6 +8,9 @@ const cspHeader = [
   "font-src 'self' https: data:",
   "img-src 'self' data: https: blob:",
   "connect-src 'self' https: wss: ws: http://127.0.0.1:* http://localhost:* https://hermes.pyth.network https://api.coingecko.com https://api.binance.com",
+  // Explicitly declare manifest-src so it doesn't fall back to default-src,
+  // which generates noisy CSP violation logs on Vercel deployments.
+  "manifest-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
