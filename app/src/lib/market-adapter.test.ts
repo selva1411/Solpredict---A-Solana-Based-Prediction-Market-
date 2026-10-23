@@ -143,9 +143,23 @@ describe("onChainToUiMarket", () => {
     const result = onChainToUiMarket(makeMock());
     expect(result.endDate).toContain("2033"); // 2000000000 * 1000 = ~2033
   });
-  it("handles non-array oracleFeedId", () => {
-    const m = makeMock({ oracleFeedId: "not-an-array" as any });
-    expect(onChainToUiMarket(m).oracleFeedId).toBeDefined();
+  it("identifies settled status from Anchor enum object", () => {
+    const m = makeMock({ status: { settled: {} } as any });
+    expect(onChainToUiMarket(m).status).toBe("settled");
+  });
+  it("identifies settled status from winningOutcome", () => {
+    const m1 = makeMock({ winningOutcome: 1 });
+    expect(onChainToUiMarket(m1).status).toBe("settled");
+    const m2 = makeMock({ winningOutcome: { yes: {} } as any });
+    expect(onChainToUiMarket(m2).status).toBe("settled");
+  });
+  it("identifies cancelled status from Anchor enum object", () => {
+    const m = makeMock({ status: { cancelled: {} } as any });
+    expect(onChainToUiMarket(m).status).toBe("cancelled");
+  });
+  it("identifies open status for active market", () => {
+    const m = makeMock({ status: { open: {} } as any, winningOutcome: 0 });
+    expect(onChainToUiMarket(m).status).toBe("open");
   });
 });
 

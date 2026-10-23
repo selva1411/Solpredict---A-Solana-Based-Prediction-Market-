@@ -195,6 +195,29 @@ function onChainToMarketAccount(item: any): MarketAccount {
   };
 }
 
+export function isMarketAccountSettledOrClosed(m: MarketAccount): boolean {
+  const st = m.account.status;
+  const wo = m.account.winningOutcome;
+  return (
+    st === 1 ||
+    st === 2 ||
+    (typeof st === "object" && st !== null && ("settled" in st || "cancelled" in st)) ||
+    (st as any) === "settled" ||
+    (st as any) === "Settled" ||
+    (st as any) === "cancelled" ||
+    (st as any) === "Cancelled" ||
+    (m.account as any).settled === true ||
+    wo === 1 ||
+    wo === 2 ||
+    (typeof wo === "object" && wo !== null && ("yes" in wo || "no" in wo)) ||
+    (wo as any) === "YES" ||
+    (wo as any) === "NO" ||
+    (wo as any) === "yes" ||
+    (wo as any) === "no" ||
+    Number((m.account as any).settledAt || 0) > 0
+  );
+}
+
 export function useMarkets(
   pollIntervalMs = 10_000,
   initialRows?: MarketCacheEntry[],
@@ -212,7 +235,15 @@ export function useMarkets(
   const [markets, setMarkets] = useState<MarketAccount[]>(() =>
     initialRows && initialRows.length > 0
       ? initialRows
+          .filter(
+            (m) =>
+              includeClosed ||
+              (m.status !== "settled" &&
+                m.status !== "cancelled" &&
+                !(m as any).settledAt)
+          )
           .map((m) => dbRowToMarketAccount(m as any, ENV.programId))
+          .filter((m) => includeClosed || !isMarketAccountSettledOrClosed(m))
           .sort((a, b) => b.account.marketId - a.account.marketId)
       : []
   );
@@ -232,18 +263,26 @@ export function useMarkets(
         );
         setMarkets((prev) => {
           const map = new Map<string, MarketAccount>();
-          // Keep existing markets so SSR/initialRows are never dropped
+          // Only retain prior markets that are active and not settled/cancelled
           for (const m of prev) {
-            map.set(m.publicKey.toBase58(), m);
+            if (includeClosed || !isMarketAccountSettledOrClosed(m)) {
+              map.set(m.publicKey.toBase58(), m);
+            }
           }
           // Overwrite/enrich with fresh DB data
           for (const m of converted) {
-            map.set(m.publicKey.toBase58(), m);
+            if (includeClosed || !isMarketAccountSettledOrClosed(m)) {
+              map.set(m.publicKey.toBase58(), m);
+            } else {
+              map.delete(m.publicKey.toBase58());
+            }
           }
-          return Array.from(map.values()).sort(
-            (a: MarketAccount, b: MarketAccount) =>
-              b.account.marketId - a.account.marketId
-          );
+          return Array.from(map.values())
+            .filter((m) => includeClosed || !isMarketAccountSettledOrClosed(m))
+            .sort(
+              (a: MarketAccount, b: MarketAccount) =>
+                b.account.marketId - a.account.marketId
+            );
         });
         setError(null);
         return true;
@@ -271,7 +310,7 @@ export function useMarkets(
           const parsed = all.map(onChainToMarketAccount);
           const visible = includeClosed
             ? parsed
-            : parsed.filter((m) => m.account.status === 0);
+            : parsed.filter((m) => !isMarketAccountSettledOrClosed(m));
           if (visible.length > 0) {
             const sorted = visible.sort(
               (a, b) => b.account.marketId - a.account.marketId
@@ -329,11 +368,23 @@ export function useMarkets(
 
   // Universal Cross-Page & Cross-Tab Activity Listener
   useEffect(() => {
-    const unsub = subscribeAppActivity(() => {
+    const unsub = subscribeAppActivity((detail) => {
+      if (
+        !includeClosed &&
+        detail?.marketPubkey &&
+        (detail?.type === "market_settled" ||
+          detail?.type === "market_cancelled" ||
+          detail?.status === "settled" ||
+          detail?.status === "cancelled")
+      ) {
+        setMarkets((prev) =>
+          prev.filter((m) => m.publicKey.toBase58() !== detail.marketPubkey)
+        );
+      }
       fetchMarkets();
     });
     return () => unsub();
-  }, [fetchMarkets]);
+  }, [fetchMarkets, includeClosed]);
 
   return { markets, loading, error, refetch: fetchMarkets };
 }

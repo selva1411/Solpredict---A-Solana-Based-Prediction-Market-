@@ -73,7 +73,9 @@ export default function DiscoverClient({
     enabled: mounted,
   });
 
-  const markets = onChainMarketsToUi(onChainMarkets ?? []);
+  const markets = onChainMarketsToUi(onChainMarkets ?? []).filter(
+    (m) => m.status !== "settled" && m.status !== "cancelled"
+  );
   const categoryMarkets =
     activeCategory === "All"
       ? markets

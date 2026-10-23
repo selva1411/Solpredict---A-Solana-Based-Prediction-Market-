@@ -174,14 +174,35 @@ export function onChainToUiMarket(
     oracleFeedId: Array.isArray(m.account.oracleFeedId)
       ? "0x" + Buffer.from(m.account.oracleFeedId).toString("hex")
       : "",
-    // 0 = open, 1 = settled, 2 = cancelled (on-chain enum index). Lets cards
-    // render the REAL board status instead of deriving it from the clock alone.
-    status:
-      m.account.status === 1
-        ? "settled"
-        : m.account.status === 2
-        ? "cancelled"
-        : "open",
+    // Check all representations of settled/cancelled (on-chain enum object, index, string, winningOutcome)
+    status: (() => {
+      const st = m.account.status;
+      const wo = m.account.winningOutcome;
+      const isSettled =
+        st === 1 ||
+        (typeof st === "object" && st !== null && "settled" in st) ||
+        (st as any) === "settled" ||
+        (st as any) === "Settled" ||
+        (m.account as any).settled === true ||
+        wo === 1 ||
+        wo === 2 ||
+        (typeof wo === "object" && wo !== null && ("yes" in wo || "no" in wo)) ||
+        (wo as any) === "YES" ||
+        (wo as any) === "NO" ||
+        (wo as any) === "yes" ||
+        (wo as any) === "no" ||
+        Number((m.account as any).settledAt || 0) > 0;
+      if (isSettled) return "settled";
+
+      const isCancelled =
+        st === 2 ||
+        (typeof st === "object" && st !== null && "cancelled" in st) ||
+        (st as any) === "cancelled" ||
+        (st as any) === "Cancelled";
+      if (isCancelled) return "cancelled";
+
+      return "open";
+    })(),
     trending: enrichment?.trending ?? false,
     hot: enrichment?.hot ?? false,
     viewCount: m._dbViewCount ?? 0,
@@ -244,6 +265,19 @@ export function cacheToUiMarket(
       : c.lastPriceBps ?? 5000;
   const yesPrice = bps / 10000;
 
+  const isSettled =
+    c.status === "settled" ||
+    c.status === "Settled" ||
+    c.winningOutcome === "YES" ||
+    c.winningOutcome === "NO" ||
+    c.winningOutcome === "yes" ||
+    c.winningOutcome === "no" ||
+    Boolean((c as any).settledAt);
+
+  const isCancelled =
+    c.status === "cancelled" ||
+    c.status === "Cancelled";
+
   return {
     id: c.marketPubkey,
     marketId: c.marketId ?? 0,
@@ -268,12 +302,7 @@ export function cacheToUiMarket(
     icon: categoryIcon(CATEGORY_NAMES.indexOf(category)),
     sparkline: [],
     oracleFeedId: "",
-    status:
-      c.status === "settled"
-        ? "settled"
-        : c.status === "cancelled"
-        ? "cancelled"
-        : "open",
+    status: isSettled ? "settled" : isCancelled ? "cancelled" : "open",
     trending: opts?.trending ?? false,
     hot: opts?.hot ?? false,
     viewCount: c.viewCount ?? 0,

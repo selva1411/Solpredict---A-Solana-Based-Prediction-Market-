@@ -58,7 +58,9 @@ export default function HomeClient({
   };
 
   const filteredMarkets = useMemo(() => {
-    let list = MARKETS;
+    let list = MARKETS.filter(
+      (m) => m.status !== "settled" && m.status !== "cancelled"
+    );
     if (category !== "All") {
       list = list.filter((m) => m.category === category);
     }

@@ -262,9 +262,20 @@ export async function settleMarketInDb(
   marketIdOrPubkey: string,
   outcome: "YES" | "NO" | "yes" | "no" | "cancel"
 ) {
-  if (!db) return false;
   const outcomeNormalized = outcome.toLowerCase();
   const statusStr = outcomeNormalized === "cancel" ? "cancelled" : "settled";
+
+  try {
+    const { updateSampleMarketStatus } = await import("@/lib/data/sample-markets");
+    updateSampleMarketStatus(marketIdOrPubkey, statusStr, outcomeNormalized);
+  } catch {}
+
+  try {
+    const { invalidateMarketList } = await import("@/lib/data/markets");
+    invalidateMarketList();
+  } catch {}
+
+  if (!db) return false;
 
   await db
     .update(marketsCache)
